@@ -53,6 +53,18 @@ private:
     [[nodiscard]]
     std::unique_ptr<Expr> parseExpression();
 
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseAdditive();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseMultiplicative();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseUnary();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parsePrimary();
+
     [[noreturn]]
     void error(
         const Token& token,

@@ -316,6 +316,25 @@ std::vector<Token> Lexer::tokenize()
                 )
             );
             break;
+        case '+':
+            tokens.push_back(
+                makeToken(TokenKind::Plus, start, location));
+            break;
+
+        case '-':
+            tokens.push_back(
+                makeToken(TokenKind::Minus, start, location));
+            break;
+
+        case '*':
+            tokens.push_back(
+                makeToken(TokenKind::Star, start, location));
+            break;
+
+        case '/':
+            tokens.push_back(
+                makeToken(TokenKind::Slash, start, location));
+            break;
 
         default:
             error(

@@ -65,3 +65,23 @@ add_test(
         -DOUTPUT=${PROJECT_BINARY_DIR}/phase1_return_42
         -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_return_test.cmake
 )
+
+function(add_microcc_expression_test name expected)
+    add_test(
+        NAME phase2.${name}
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DMICROCC=$<TARGET_FILE:microcc>
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/${name}.c
+            -DOUTPUT=${PROJECT_BINARY_DIR}/phase2_${name}
+            -DEXPECTED_EXIT=${expected}
+            -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_return_test.cmake
+    )
+endfunction()
+
+add_microcc_expression_test(precedence    14)
+add_microcc_expression_test(parentheses   20)
+add_microcc_expression_test(associativity 4)
+add_microcc_expression_test(unary         13)
+add_microcc_expression_test(division      5)
+add_microcc_expression_test(nesting       10)

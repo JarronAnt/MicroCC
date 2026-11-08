@@ -168,6 +168,93 @@ std::unique_ptr<Stmt> Parser::parseReturnStatement()
 
 std::unique_ptr<Expr> Parser::parseExpression()
 {
+    return parseAdditive();
+}
+
+// Lowest precedence in Phase 2:
+// + and -
+std::unique_ptr<Expr> Parser::parseAdditive()
+{
+    auto left = parseMultiplicative();
+
+    while (
+        check(TokenKind::Plus) ||
+        check(TokenKind::Minus)
+    ) {
+        const TokenKind op = advance().kind;
+
+        auto right = parseMultiplicative();
+
+        const BinaryOperator binaryOp =
+            op == TokenKind::Plus
+                ? BinaryOperator::Add
+                : BinaryOperator::Subtract;
+
+        left = std::make_unique<BinaryExpr>(
+            binaryOp,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// Higher precedence:
+// * and /
+std::unique_ptr<Expr> Parser::parseMultiplicative()
+{
+    auto left = parseUnary();
+
+    while (
+        check(TokenKind::Star) ||
+        check(TokenKind::Slash)
+    ) {
+        const TokenKind op = advance().kind;
+
+        auto right = parseUnary();
+
+        const BinaryOperator binaryOp =
+            op == TokenKind::Star
+                ? BinaryOperator::Multiply
+                : BinaryOperator::Divide;
+
+        left = std::make_unique<BinaryExpr>(
+            binaryOp,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// Unary operators:
+// +x, -x, --x, -(x + y)
+std::unique_ptr<Expr> Parser::parseUnary()
+{
+    if (match(TokenKind::Plus)) {
+        return std::make_unique<UnaryExpr>(
+            UnaryOperator::Plus,
+            parseUnary()
+        );
+    }
+
+    if (match(TokenKind::Minus)) {
+        return std::make_unique<UnaryExpr>(
+            UnaryOperator::Negate,
+            parseUnary()
+        );
+    }
+
+    return parsePrimary();
+}
+
+// Highest precedence:
+// integer literals and parenthesized expressions
+std::unique_ptr<Expr> Parser::parsePrimary()
+{
+    // Integer literal
     if (match(TokenKind::IntegerLiteral)) {
         const Token& token = previous();
 
@@ -182,7 +269,7 @@ std::unique_ptr<Expr> Parser::parseExpression()
             std::numeric_limits<std::int32_t>::max()) {
             error(
                 token,
-                "Phase 1 only supports integer literals "
+                "Phase 2 only supports integer literals "
                 "representable by a signed 32-bit int"
             );
         }
@@ -190,6 +277,18 @@ std::unique_ptr<Expr> Parser::parseExpression()
         return std::make_unique<IntegerLiteral>(
             *token.integerValue
         );
+    }
+
+    // Parenthesized expression
+    if (match(TokenKind::LeftParen)) {
+        auto expression = parseExpression();
+
+        consume(
+            TokenKind::RightParen,
+            "expected ')' after expression"
+        );
+
+        return expression;
     }
 
     error(

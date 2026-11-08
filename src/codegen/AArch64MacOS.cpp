@@ -26,16 +26,6 @@ void AArch64MacOSCodeGenerator::emitFunction(
     const FunctionDecl& function
 ) const
 {
-    // Mach-O prefixes externally visible C symbols with '_'.
-    //
-    // C:
-    //
-    //     int main()
-    //
-    // Assembly:
-    //
-    //     _main:
-    //
     const std::string symbol = "_" + function.name;
 
     out << ".globl " << symbol << '\n';
@@ -53,8 +43,6 @@ void AArch64MacOSCodeGenerator::emitFunction(
         }
     }
 
-    // C permits reaching the end of main().
-    // It is equivalent to returning 0.
     if (!emittedReturn && function.name == "main") {
         out << "    mov w0, #0\n";
         out << "    ret\n";
@@ -63,7 +51,7 @@ void AArch64MacOSCodeGenerator::emitFunction(
 
     if (!emittedReturn) {
         throw std::runtime_error(
-            "Phase 1 requires non-main functions "
+            "Phase 2 requires non-main functions "
             "to contain an explicit return statement"
         );
     }
@@ -82,6 +70,7 @@ void AArch64MacOSCodeGenerator::emitStatement(
             *returnStmt->expression
         );
 
+        // The result is in w0.
         out << "    ret\n";
         return;
     }
@@ -96,13 +85,91 @@ void AArch64MacOSCodeGenerator::emitExpression(
     const Expr& expression
 ) const
 {
+    // ========================================================
+    // Integer literal
+    // ========================================================
+
     if (const auto* integer =
             dynamic_cast<const IntegerLiteral*>(&expression)) {
 
-        emitIntegerLiteral(
-            out,
-            integer->value
-        );
+        emitIntegerLiteral(out, integer->value);
+        return;
+    }
+
+    // ========================================================
+    // Unary expression
+    // ========================================================
+
+    if (const auto* unary =
+            dynamic_cast<const UnaryExpr*>(&expression)) {
+
+        emitExpression(out, *unary->operand);
+
+        switch (unary->op) {
+        case UnaryOperator::Plus:
+            // +x changes nothing.
+            break;
+
+        case UnaryOperator::Negate:
+            out << "    neg w0, w0\n";
+            break;
+        }
+
+        return;
+    }
+
+    // ========================================================
+    // Binary expression
+    // ========================================================
+
+    if (const auto* binary =
+            dynamic_cast<const BinaryExpr*>(&expression)) {
+
+        // Evaluate the left expression.
+        // The result is placed in w0.
+        emitExpression(out, *binary->left);
+
+        // Preserve the left result on the stack.
+        //
+        // Allocate 16 bytes to maintain stack alignment.
+        out << "    sub sp, sp, #16\n";
+        out << "    str w0, [sp]\n";
+
+        // Evaluate right expression.
+        //
+        // This may recursively evaluate additional
+        // binary expressions and use the stack.
+        emitExpression(out, *binary->right);
+
+        // Restore left operand into w9.
+        //
+        // Right operand remains in w0.
+        out << "    ldr w9, [sp]\n";
+        out << "    add sp, sp, #16\n";
+
+        // Perform the requested arithmetic.
+        //
+        // Left:  w9
+        // Right: w0
+        // Result: w0
+
+        switch (binary->op) {
+        case BinaryOperator::Add:
+            out << "    add w0, w9, w0\n";
+            break;
+
+        case BinaryOperator::Subtract:
+            out << "    sub w0, w9, w0\n";
+            break;
+
+        case BinaryOperator::Multiply:
+            out << "    mul w0, w9, w0\n";
+            break;
+
+        case BinaryOperator::Divide:
+            out << "    sdiv w0, w9, w0\n";
+            break;
+        }
 
         return;
     }
@@ -126,10 +193,6 @@ void AArch64MacOSCodeGenerator::emitIntegerLiteral(
     const std::uint32_t high =
         (bits >> 16U) & 0xFFFFU;
 
-    // AArch64 return values for int are placed in W0.
-    //
-    // movz initializes the register.
-    // movk replaces a selected 16-bit portion.
     out << "    movz w0, #" << low << '\n';
 
     if (high != 0) {
