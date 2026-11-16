@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <cstdint>
@@ -16,7 +17,7 @@ struct Expr {
     virtual ~Expr() = default;
 };
 
-// Integer literal: 42
+// Integer literals: 42, 100, 1234
 struct IntegerLiteral final : Expr {
     explicit IntegerLiteral(std::int64_t value)
         : value(value)
@@ -26,10 +27,15 @@ struct IntegerLiteral final : Expr {
     std::int64_t value;
 };
 
-// Unary operators: +x, -x
+// ============================================================
+// Unary Expressions
+// ============================================================
+
 enum class UnaryOperator {
     Plus,
-    Negate
+    Negate,
+    LogicalNot,
+    BitwiseNot
 };
 
 struct UnaryExpr final : Expr {
@@ -46,12 +52,43 @@ struct UnaryExpr final : Expr {
     std::unique_ptr<Expr> operand;
 };
 
-// Binary operators: +, -, *, /
+// ============================================================
+// Binary Expressions
+// ============================================================
+
 enum class BinaryOperator {
+    // Arithmetic
     Add,
     Subtract,
     Multiply,
-    Divide
+    Divide,
+    Remainder,
+
+    // Shifts
+    ShiftLeft,
+    ShiftRight,
+
+    // Relational
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+    // Equality
+    Equal,
+    NotEqual,
+
+    // Bitwise
+    BitwiseAnd,
+    BitwiseXor,
+    BitwiseOr,
+
+    // Logical
+    LogicalAnd,
+    LogicalOr,
+
+    // Comma
+    Comma
 };
 
 struct BinaryExpr final : Expr {
@@ -67,9 +104,31 @@ struct BinaryExpr final : Expr {
     }
 
     BinaryOperator op;
-
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
+};
+
+// ============================================================
+// Conditional Expression
+//
+// condition ? thenExpr : elseExpr
+// ============================================================
+
+struct ConditionalExpr final : Expr {
+    ConditionalExpr(
+        std::unique_ptr<Expr> condition,
+        std::unique_ptr<Expr> thenExpr,
+        std::unique_ptr<Expr> elseExpr
+    )
+        : condition(std::move(condition))
+        , thenExpr(std::move(thenExpr))
+        , elseExpr(std::move(elseExpr))
+    {
+    }
+
+    std::unique_ptr<Expr> condition;
+    std::unique_ptr<Expr> thenExpr;
+    std::unique_ptr<Expr> elseExpr;
 };
 
 // ============================================================
@@ -90,7 +149,7 @@ struct ReturnStmt final : Stmt {
 };
 
 // ============================================================
-// Functions
+// Function Declarations
 // ============================================================
 
 struct FunctionDecl {
@@ -107,3 +166,4 @@ struct Program {
 };
 
 } // namespace microcc
+

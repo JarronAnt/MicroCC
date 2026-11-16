@@ -37,6 +37,37 @@ enum class TokenKind {
     Minus,
     Star,
     Slash,
+    Percent,
+
+    // Relational
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+    // Equality
+    EqualEqual,
+    BangEqual,
+
+    // Bitwise
+    Ampersand,
+    Pipe,
+    Caret,
+    Tilde,
+
+    // Logical
+    AmpAmp,
+    PipePipe,
+    Bang,
+
+    // Shifts
+    ShiftLeft,
+    ShiftRight,
+
+    // Conditional and sequencing
+    Question,
+    Colon,
+    Comma
 };
 
 struct Token {
@@ -67,6 +98,32 @@ inline std::string_view tokenKindName(TokenKind kind)
     case TokenKind::Minus:         return "Minus";
     case TokenKind::Star:          return "Star";
     case TokenKind::Slash:         return "Slash";
+    case TokenKind::Percent:        return "Percent";
+
+    case TokenKind::Less:           return "Less";
+    case TokenKind::LessEqual:      return "LessEqual";
+    case TokenKind::Greater:        return "Greater";
+    case TokenKind::GreaterEqual:   return "GreaterEqual";
+
+    case TokenKind::EqualEqual:     return "EqualEqual";
+    case TokenKind::BangEqual:      return "BangEqual";
+
+    case TokenKind::Ampersand:      return "Ampersand";
+    case TokenKind::Pipe:           return "Pipe";
+    case TokenKind::Caret:          return "Caret";
+    case TokenKind::Tilde:          return "Tilde";
+
+    case TokenKind::AmpAmp:         return "AmpAmp";
+    case TokenKind::PipePipe:       return "PipePipe";
+    case TokenKind::Bang:           return "Bang";
+
+    case TokenKind::ShiftLeft:      return "ShiftLeft";
+    case TokenKind::ShiftRight:     return "ShiftRight";
+
+    case TokenKind::Question:       return "Question";
+    case TokenKind::Colon:          return "Colon";
+    case TokenKind::Comma:          return "Comma";
+
     }
 
     return "Unknown";

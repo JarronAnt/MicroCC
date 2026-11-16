@@ -1,10 +1,13 @@
+
 #pragma once
 
 #include "microcc/AST.hpp"
 #include "microcc/Token.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace microcc {
@@ -20,6 +23,10 @@ public:
     Program parseProgram();
 
 private:
+    // ========================================================
+    // Token helpers
+    // ========================================================
+
     [[nodiscard]]
     const Token& current() const;
 
@@ -41,6 +48,10 @@ private:
         std::string_view message
     );
 
+    // ========================================================
+    // Declarations and statements
+    // ========================================================
+
     [[nodiscard]]
     std::unique_ptr<FunctionDecl> parseFunction();
 
@@ -50,8 +61,44 @@ private:
     [[nodiscard]]
     std::unique_ptr<Stmt> parseReturnStatement();
 
+    // ========================================================
+    // Expression parsing
+    //
+    // Listed from lowest to highest precedence.
+    // ========================================================
+
     [[nodiscard]]
     std::unique_ptr<Expr> parseExpression();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseComma();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseConditional();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseLogicalOr();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseLogicalAnd();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseBitwiseOr();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseBitwiseXor();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseBitwiseAnd();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseEquality();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseRelational();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseShift();
 
     [[nodiscard]]
     std::unique_ptr<Expr> parseAdditive();
@@ -64,6 +111,10 @@ private:
 
     [[nodiscard]]
     std::unique_ptr<Expr> parsePrimary();
+
+    // ========================================================
+    // Diagnostics
+    // ========================================================
 
     [[noreturn]]
     void error(
@@ -79,3 +130,4 @@ private:
 };
 
 } // namespace microcc
+

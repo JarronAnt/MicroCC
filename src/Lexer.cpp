@@ -1,3 +1,4 @@
+
 #include "microcc/Lexer.hpp"
 
 #include <cctype>
@@ -5,10 +6,14 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace microcc {
 
-Lexer::Lexer(std::string_view source, std::string filename)
+Lexer::Lexer(
+    std::string_view source,
+    std::string filename
+)
     : source_(source)
     , filename_(std::move(filename))
 {
@@ -21,11 +26,7 @@ bool Lexer::isAtEnd() const
 
 char Lexer::peek() const
 {
-    if (isAtEnd()) {
-        return '\0';
-    }
-
-    return source_[current_];
+    return isAtEnd() ? '\0' : source_[current_];
 }
 
 char Lexer::peekNext() const
@@ -60,22 +61,13 @@ void Lexer::skipWhitespaceAndComments()
     while (!isAtEnd()) {
         const char c = peek();
 
-        switch (c) {
-        case ' ':
-        case '\t':
-        case '\r':
-        case '\n':
+        if (c == ' ' || c == '\t' ||
+            c == '\r' || c == '\n') {
             advance();
             continue;
-
-        default:
-            break;
         }
 
-        // Single-line comment:
-        //
-        //   // comment
-        //
+        // Single-line comments
         if (c == '/' && peekNext() == '/') {
             advance();
             advance();
@@ -87,12 +79,9 @@ void Lexer::skipWhitespaceAndComments()
             continue;
         }
 
-        // Block comment:
-        //
-        //   /* comment */
-        //
+        // Block comments
         if (c == '/' && peekNext() == '*') {
-            const SourceLocation location {
+            const SourceLocation location{
                 current_,
                 line_,
                 column_
@@ -101,20 +90,21 @@ void Lexer::skipWhitespaceAndComments()
             advance();
             advance();
 
+            bool closed = false;
+
             while (!isAtEnd()) {
                 if (peek() == '*' && peekNext() == '/') {
                     advance();
                     advance();
+
+                    closed = true;
                     break;
                 }
 
                 advance();
             }
 
-            if (isAtEnd() &&
-                !(current_ >= 2 &&
-                  source_[current_ - 2] == '*' &&
-                  source_[current_ - 1] == '/')) {
+            if (!closed) {
                 error(location, "unterminated block comment");
             }
 
@@ -131,11 +121,13 @@ Token Lexer::makeToken(
     SourceLocation location
 ) const
 {
-    return Token {
-        .kind = kind,
-        .lexeme = std::string(source_.substr(start, current_ - start)),
-        .location = location,
-        .integerValue = std::nullopt
+    return Token{
+        kind,
+        std::string(
+            source_.substr(start, current_ - start)
+        ),
+        location,
+        std::nullopt
     };
 }
 
@@ -145,7 +137,7 @@ Token Lexer::lexIdentifierOrKeyword(
 )
 {
     while (!isAtEnd()) {
-        const unsigned char c =
+        const auto c =
             static_cast<unsigned char>(peek());
 
         if (!std::isalnum(c) && c != '_') {
@@ -155,7 +147,7 @@ Token Lexer::lexIdentifierOrKeyword(
         advance();
     }
 
-    const std::string_view text =
+    const auto text =
         source_.substr(start, current_ - start);
 
     TokenKind kind = TokenKind::Identifier;
@@ -166,11 +158,11 @@ Token Lexer::lexIdentifierOrKeyword(
         kind = TokenKind::KwReturn;
     }
 
-    return Token {
-        .kind = kind,
-        .lexeme = std::string(text),
-        .location = location,
-        .integerValue = std::nullopt
+    return Token{
+        kind,
+        std::string(text),
+        location,
+        std::nullopt
     };
 }
 
@@ -179,18 +171,14 @@ Token Lexer::lexNumber(
     SourceLocation location
 )
 {
-    while (!isAtEnd()) {
-        const unsigned char c =
-            static_cast<unsigned char>(peek());
-
-        if (!std::isdigit(c)) {
-            break;
-        }
-
+    while (!isAtEnd() &&
+           std::isdigit(
+               static_cast<unsigned char>(peek())
+           )) {
         advance();
     }
 
-    const std::string_view text =
+    const auto text =
         source_.substr(start, current_ - start);
 
     std::int64_t value = 0;
@@ -202,16 +190,16 @@ Token Lexer::lexNumber(
             value
         );
 
-    if (ec != std::errc {} ||
+    if (ec != std::errc{} ||
         ptr != text.data() + text.size()) {
         error(location, "invalid integer literal");
     }
 
-    return Token {
-        .kind = TokenKind::IntegerLiteral,
-        .lexeme = std::string(text),
-        .location = location,
-        .integerValue = value
+    return Token{
+        TokenKind::IntegerLiteral,
+        std::string(text),
+        location,
+        value
     };
 }
 
@@ -223,15 +211,11 @@ std::vector<Token> Lexer::tokenize()
         skipWhitespaceAndComments();
 
         if (isAtEnd()) {
-            tokens.push_back(Token {
-                .kind = TokenKind::EndOfFile,
-                .lexeme = "",
-                .location = SourceLocation {
-                    current_,
-                    line_,
-                    column_
-                },
-                .integerValue = std::nullopt
+            tokens.push_back(Token{
+                TokenKind::EndOfFile,
+                "",
+                {current_, line_, column_},
+                std::nullopt
             });
 
             break;
@@ -239,7 +223,7 @@ std::vector<Token> Lexer::tokenize()
 
         const std::size_t start = current_;
 
-        const SourceLocation location {
+        const SourceLocation location{
             current_,
             line_,
             column_
@@ -247,7 +231,7 @@ std::vector<Token> Lexer::tokenize()
 
         const char c = advance();
 
-        const unsigned char uc =
+        const auto uc =
             static_cast<unsigned char>(c);
 
         if (std::isalpha(uc) || c == '_') {
@@ -266,84 +250,151 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
+        TokenKind kind;
+
         switch (c) {
+        // Punctuation
         case '(':
-            tokens.push_back(
-                makeToken(
-                    TokenKind::LeftParen,
-                    start,
-                    location
-                )
-            );
+            kind = TokenKind::LeftParen;
             break;
 
         case ')':
-            tokens.push_back(
-                makeToken(
-                    TokenKind::RightParen,
-                    start,
-                    location
-                )
-            );
+            kind = TokenKind::RightParen;
             break;
 
         case '{':
-            tokens.push_back(
-                makeToken(
-                    TokenKind::LeftBrace,
-                    start,
-                    location
-                )
-            );
+            kind = TokenKind::LeftBrace;
             break;
 
         case '}':
-            tokens.push_back(
-                makeToken(
-                    TokenKind::RightBrace,
-                    start,
-                    location
-                )
-            );
+            kind = TokenKind::RightBrace;
             break;
 
         case ';':
-            tokens.push_back(
-                makeToken(
-                    TokenKind::Semicolon,
-                    start,
-                    location
-                )
-            );
+            kind = TokenKind::Semicolon;
             break;
+
+        // Arithmetic
         case '+':
-            tokens.push_back(
-                makeToken(TokenKind::Plus, start, location));
+            kind = TokenKind::Plus;
             break;
 
         case '-':
-            tokens.push_back(
-                makeToken(TokenKind::Minus, start, location));
+            kind = TokenKind::Minus;
             break;
 
         case '*':
-            tokens.push_back(
-                makeToken(TokenKind::Star, start, location));
+            kind = TokenKind::Star;
             break;
 
         case '/':
-            tokens.push_back(
-                makeToken(TokenKind::Slash, start, location));
+            kind = TokenKind::Slash;
+            break;
+
+        case '%':
+            kind = TokenKind::Percent;
+            break;
+
+        // Bitwise and conditional
+        case '^':
+            kind = TokenKind::Caret;
+            break;
+
+        case '~':
+            kind = TokenKind::Tilde;
+            break;
+
+        case '?':
+            kind = TokenKind::Question;
+            break;
+
+        case ':':
+            kind = TokenKind::Colon;
+            break;
+
+        case ',':
+            kind = TokenKind::Comma;
+            break;
+
+        // Comparison and shifts
+        case '<':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::LessEqual;
+            } else if (peek() == '<') {
+                advance();
+                kind = TokenKind::ShiftLeft;
+            } else {
+                kind = TokenKind::Less;
+            }
+            break;
+
+        case '>':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::GreaterEqual;
+            } else if (peek() == '>') {
+                advance();
+                kind = TokenKind::ShiftRight;
+            } else {
+                kind = TokenKind::Greater;
+            }
+            break;
+
+        // Equality
+        case '=':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::EqualEqual;
+            } else {
+                error(
+                    location,
+                    "assignment '=' is not supported until Phase 3"
+                );
+            }
+            break;
+
+        // Logical NOT or inequality
+        case '!':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::BangEqual;
+            } else {
+                kind = TokenKind::Bang;
+            }
+            break;
+
+        // Bitwise AND or logical AND
+        case '&':
+            if (peek() == '&') {
+                advance();
+                kind = TokenKind::AmpAmp;
+            } else {
+                kind = TokenKind::Ampersand;
+            }
+            break;
+
+        // Bitwise OR or logical OR
+        case '|':
+            if (peek() == '|') {
+                advance();
+                kind = TokenKind::PipePipe;
+            } else {
+                kind = TokenKind::Pipe;
+            }
             break;
 
         default:
             error(
                 location,
                 std::string("unexpected character '") +
-                    c +
-                    "'"
+                    c + "'"
             );
         }
+
+        tokens.push_back(
+            makeToken(kind, start, location)
+        );
     }
 
     return tokens;
@@ -355,10 +406,8 @@ void Lexer::error(
 ) const
 {
     throw std::runtime_error(
-        filename_ +
-        ":" +
-        std::to_string(location.line) +
-        ":" +
+        filename_ + ":" +
+        std::to_string(location.line) + ":" +
         std::to_string(location.column) +
         ": error: " +
         std::string(message)
@@ -366,3 +415,4 @@ void Lexer::error(
 }
 
 } // namespace microcc
+

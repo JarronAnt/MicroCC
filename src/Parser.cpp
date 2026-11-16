@@ -1,10 +1,16 @@
+
 #include "microcc/Parser.hpp"
 
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace microcc {
+
+// ============================================================
+// Constructor
+// ============================================================
 
 Parser::Parser(
     std::vector<Token> tokens,
@@ -15,14 +21,18 @@ Parser::Parser(
 {
 }
 
+// ============================================================
+// Token helpers
+// ============================================================
+
 const Token& Parser::current() const
 {
-    return tokens_[currentIndex_];
+    return tokens_.at(currentIndex_);
 }
 
 const Token& Parser::previous() const
 {
-    return tokens_[currentIndex_ - 1];
+    return tokens_.at(currentIndex_ - 1);
 }
 
 bool Parser::isAtEnd() const
@@ -32,10 +42,6 @@ bool Parser::isAtEnd() const
 
 bool Parser::check(TokenKind kind) const
 {
-    if (isAtEnd()) {
-        return kind == TokenKind::EndOfFile;
-    }
-
     return current().kind == kind;
 }
 
@@ -46,7 +52,6 @@ bool Parser::match(TokenKind kind)
     }
 
     advance();
-
     return true;
 }
 
@@ -71,6 +76,10 @@ const Token& Parser::consume(
     error(current(), message);
 }
 
+// ============================================================
+// Program
+// ============================================================
+
 Program Parser::parseProgram()
 {
     Program program;
@@ -84,11 +93,15 @@ Program Parser::parseProgram()
     return program;
 }
 
+// ============================================================
+// Function declarations
+// ============================================================
+
 std::unique_ptr<FunctionDecl> Parser::parseFunction()
 {
     consume(
         TokenKind::KwInt,
-        "expected 'int' at beginning of function declaration"
+        "expected 'int' at beginning of function"
     );
 
     const Token& name = consume(
@@ -135,16 +148,17 @@ std::unique_ptr<FunctionDecl> Parser::parseFunction()
     return function;
 }
 
+// ============================================================
+// Statements
+// ============================================================
+
 std::unique_ptr<Stmt> Parser::parseStatement()
 {
     if (check(TokenKind::KwReturn)) {
         return parseReturnStatement();
     }
 
-    error(
-        current(),
-        "expected statement"
-    );
+    error(current(), "expected statement");
 }
 
 std::unique_ptr<Stmt> Parser::parseReturnStatement()
@@ -166,13 +180,315 @@ std::unique_ptr<Stmt> Parser::parseReturnStatement()
     );
 }
 
+// ============================================================
+// Expression entry point
+// ============================================================
+
 std::unique_ptr<Expr> Parser::parseExpression()
 {
-    return parseAdditive();
+    return parseComma();
 }
 
-// Lowest precedence in Phase 2:
-// + and -
+// ============================================================
+// Comma operator
+//
+// a, b
+//
+// Lowest precedence.
+// Evaluate a, discard its value, then evaluate b.
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseComma()
+{
+    auto left = parseConditional();
+
+    while (match(TokenKind::Comma)) {
+        auto right = parseConditional();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::Comma,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Conditional operator
+//
+// condition ? thenExpression : elseExpression
+//
+// Right-associative.
+// Only one result branch will execute.
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseConditional()
+{
+    auto condition = parseLogicalOr();
+
+    if (!match(TokenKind::Question)) {
+        return condition;
+    }
+
+    // C permits a full expression (including comma)
+    // between '?' and ':'.
+    auto thenExpr = parseExpression();
+
+    consume(
+        TokenKind::Colon,
+        "expected ':' in conditional expression"
+    );
+
+    // The else branch is another conditional expression.
+    // This preserves right associativity.
+    auto elseExpr = parseConditional();
+
+    return std::make_unique<ConditionalExpr>(
+        std::move(condition),
+        std::move(thenExpr),
+        std::move(elseExpr)
+    );
+}
+
+// ============================================================
+// Logical OR
+//
+// a || b
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseLogicalOr()
+{
+    auto left = parseLogicalAnd();
+
+    while (match(TokenKind::PipePipe)) {
+        auto right = parseLogicalAnd();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::LogicalOr,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Logical AND
+//
+// a && b
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseLogicalAnd()
+{
+    auto left = parseBitwiseOr();
+
+    while (match(TokenKind::AmpAmp)) {
+        auto right = parseBitwiseOr();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::LogicalAnd,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Bitwise OR
+//
+// a | b
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseBitwiseOr()
+{
+    auto left = parseBitwiseXor();
+
+    while (match(TokenKind::Pipe)) {
+        auto right = parseBitwiseXor();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::BitwiseOr,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Bitwise XOR
+//
+// a ^ b
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseBitwiseXor()
+{
+    auto left = parseBitwiseAnd();
+
+    while (match(TokenKind::Caret)) {
+        auto right = parseBitwiseAnd();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::BitwiseXor,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Bitwise AND
+//
+// a & b
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseBitwiseAnd()
+{
+    auto left = parseEquality();
+
+    while (match(TokenKind::Ampersand)) {
+        auto right = parseEquality();
+
+        left = std::make_unique<BinaryExpr>(
+            BinaryOperator::BitwiseAnd,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Equality
+//
+// == !=
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseEquality()
+{
+    auto left = parseRelational();
+
+    while (
+        check(TokenKind::EqualEqual) ||
+        check(TokenKind::BangEqual)
+    ) {
+        const TokenKind op = advance().kind;
+
+        auto right = parseRelational();
+
+        const BinaryOperator binaryOp =
+            op == TokenKind::EqualEqual
+                ? BinaryOperator::Equal
+                : BinaryOperator::NotEqual;
+
+        left = std::make_unique<BinaryExpr>(
+            binaryOp,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Relational operators
+//
+// < <= > >=
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseRelational()
+{
+    auto left = parseShift();
+
+    while (
+        check(TokenKind::Less) ||
+        check(TokenKind::LessEqual) ||
+        check(TokenKind::Greater) ||
+        check(TokenKind::GreaterEqual)
+    ) {
+        const TokenKind op = advance().kind;
+
+        auto right = parseShift();
+
+        BinaryOperator binaryOp;
+
+        switch (op) {
+        case TokenKind::Less:
+            binaryOp = BinaryOperator::Less;
+            break;
+
+        case TokenKind::LessEqual:
+            binaryOp = BinaryOperator::LessEqual;
+            break;
+
+        case TokenKind::Greater:
+            binaryOp = BinaryOperator::Greater;
+            break;
+
+        default:
+            binaryOp = BinaryOperator::GreaterEqual;
+            break;
+        }
+
+        left = std::make_unique<BinaryExpr>(
+            binaryOp,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Bit shifts
+//
+// << >>
+// ============================================================
+
+std::unique_ptr<Expr> Parser::parseShift()
+{
+    auto left = parseAdditive();
+
+    while (
+        check(TokenKind::ShiftLeft) ||
+        check(TokenKind::ShiftRight)
+    ) {
+        const TokenKind op = advance().kind;
+
+        auto right = parseAdditive();
+
+        const BinaryOperator binaryOp =
+            op == TokenKind::ShiftLeft
+                ? BinaryOperator::ShiftLeft
+                : BinaryOperator::ShiftRight;
+
+        left = std::make_unique<BinaryExpr>(
+            binaryOp,
+            std::move(left),
+            std::move(right)
+        );
+    }
+
+    return left;
+}
+
+// ============================================================
+// Addition and subtraction
+//
+// + -
+// ============================================================
+
 std::unique_ptr<Expr> Parser::parseAdditive()
 {
     auto left = parseMultiplicative();
@@ -200,24 +516,40 @@ std::unique_ptr<Expr> Parser::parseAdditive()
     return left;
 }
 
-// Higher precedence:
-// * and /
+// ============================================================
+// Multiplication, division, remainder
+//
+// * / %
+// ============================================================
+
 std::unique_ptr<Expr> Parser::parseMultiplicative()
 {
     auto left = parseUnary();
 
     while (
         check(TokenKind::Star) ||
-        check(TokenKind::Slash)
+        check(TokenKind::Slash) ||
+        check(TokenKind::Percent)
     ) {
         const TokenKind op = advance().kind;
 
         auto right = parseUnary();
 
-        const BinaryOperator binaryOp =
-            op == TokenKind::Star
-                ? BinaryOperator::Multiply
-                : BinaryOperator::Divide;
+        BinaryOperator binaryOp;
+
+        switch (op) {
+        case TokenKind::Star:
+            binaryOp = BinaryOperator::Multiply;
+            break;
+
+        case TokenKind::Slash:
+            binaryOp = BinaryOperator::Divide;
+            break;
+
+        default:
+            binaryOp = BinaryOperator::Remainder;
+            break;
+        }
 
         left = std::make_unique<BinaryExpr>(
             binaryOp,
@@ -229,8 +561,12 @@ std::unique_ptr<Expr> Parser::parseMultiplicative()
     return left;
 }
 
-// Unary operators:
-// +x, -x, --x, -(x + y)
+// ============================================================
+// Unary operators
+//
+// + - ! ~
+// ============================================================
+
 std::unique_ptr<Expr> Parser::parseUnary()
 {
     if (match(TokenKind::Plus)) {
@@ -247,14 +583,31 @@ std::unique_ptr<Expr> Parser::parseUnary()
         );
     }
 
+    if (match(TokenKind::Bang)) {
+        return std::make_unique<UnaryExpr>(
+            UnaryOperator::LogicalNot,
+            parseUnary()
+        );
+    }
+
+    if (match(TokenKind::Tilde)) {
+        return std::make_unique<UnaryExpr>(
+            UnaryOperator::BitwiseNot,
+            parseUnary()
+        );
+    }
+
     return parsePrimary();
 }
 
-// Highest precedence:
-// integer literals and parenthesized expressions
+// ============================================================
+// Primary expressions
+//
+// Integer literals and parentheses.
+// ============================================================
+
 std::unique_ptr<Expr> Parser::parsePrimary()
 {
-    // Integer literal
     if (match(TokenKind::IntegerLiteral)) {
         const Token& token = previous();
 
@@ -265,8 +618,10 @@ std::unique_ptr<Expr> Parser::parsePrimary()
             );
         }
 
-        if (*token.integerValue >
-            std::numeric_limits<std::int32_t>::max()) {
+        if (
+            *token.integerValue >
+            std::numeric_limits<std::int32_t>::max()
+        ) {
             error(
                 token,
                 "Phase 2 only supports integer literals "
@@ -279,7 +634,6 @@ std::unique_ptr<Expr> Parser::parsePrimary()
         );
     }
 
-    // Parenthesized expression
     if (match(TokenKind::LeftParen)) {
         auto expression = parseExpression();
 
@@ -291,11 +645,12 @@ std::unique_ptr<Expr> Parser::parsePrimary()
         return expression;
     }
 
-    error(
-        current(),
-        "expected expression"
-    );
+    error(current(), "expected expression");
 }
+
+// ============================================================
+// Diagnostics
+// ============================================================
 
 void Parser::error(
     const Token& token,
@@ -303,10 +658,8 @@ void Parser::error(
 ) const
 {
     throw std::runtime_error(
-        filename_ +
-        ":" +
-        std::to_string(token.location.line) +
-        ":" +
+        filename_ + ":" +
+        std::to_string(token.location.line) + ":" +
         std::to_string(token.location.column) +
         ": error: " +
         std::string(message)
@@ -314,3 +667,4 @@ void Parser::error(
 }
 
 } // namespace microcc
+

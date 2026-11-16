@@ -1,8 +1,9 @@
+
 cmake_minimum_required(VERSION 3.20)
 
 project(
     MicroCC
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "A tiny educational C compiler written in modern C++"
     LANGUAGES CXX
 )
@@ -12,6 +13,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ============================================================
+# Compiler library
+# ============================================================
 
 add_library(microcc_core STATIC
     src/Lexer.cpp
@@ -24,14 +29,21 @@ target_include_directories(microcc_core
         ${PROJECT_SOURCE_DIR}/include
 )
 
+# ============================================================
+# Compiler executable
+# ============================================================
+
 add_executable(microcc
     src/main.cpp
 )
 
 target_link_libraries(microcc
-    PRIVATE
-        microcc_core
+    PRIVATE microcc_core
 )
+
+# ============================================================
+# Compiler warnings
+# ============================================================
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(microcc_core PRIVATE
@@ -49,39 +61,97 @@ endif()
 
 if(NOT APPLE)
     message(WARNING
-        "MicroCC Phase 1 currently emits AArch64 macOS assembly. "
-        "Additional backends will be added later."
+        "MicroCC currently emits AArch64 macOS assembly. "
+        "End-to-end tests require an Apple Silicon Mac."
     )
 endif()
 
+# ============================================================
+# Testing
+# ============================================================
+
 enable_testing()
 
-add_test(
-    NAME phase1.return_42
-    COMMAND
-        ${CMAKE_COMMAND}
-        -DMICROCC=$<TARGET_FILE:microcc>
-        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/return_42.c
-        -DOUTPUT=${PROJECT_BINARY_DIR}/phase1_return_42
-        -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_return_test.cmake
-)
-
-function(add_microcc_expression_test name expected)
+function(add_microcc_return_test name expected phase)
     add_test(
-        NAME phase2.${name}
+        NAME ${phase}.${name}
         COMMAND
             ${CMAKE_COMMAND}
             -DMICROCC=$<TARGET_FILE:microcc>
             -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/${name}.c
-            -DOUTPUT=${PROJECT_BINARY_DIR}/phase2_${name}
+            -DOUTPUT=${PROJECT_BINARY_DIR}/${phase}_${name}
             -DEXPECTED_EXIT=${expected}
             -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_return_test.cmake
     )
 endfunction()
 
-add_microcc_expression_test(precedence    14)
-add_microcc_expression_test(parentheses   20)
-add_microcc_expression_test(associativity 4)
-add_microcc_expression_test(unary         13)
-add_microcc_expression_test(division      5)
-add_microcc_expression_test(nesting       10)
+function(add_microcc_failure_test name diagnostic)
+    add_test(
+        NAME phase2b.error_${name}
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DMICROCC=$<TARGET_FILE:microcc>
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/${name}.c
+            -DOUTPUT=${PROJECT_BINARY_DIR}/phase2b_error_${name}.s
+            -DEXPECTED_DIAGNOSTIC=${diagnostic}
+            -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_failure_test.cmake
+    )
+endfunction()
+
+# ============================================================
+# Phase 1
+# ============================================================
+
+add_microcc_return_test(return_42 42 phase1)
+
+# ============================================================
+# Phase 2A
+# ============================================================
+
+add_microcc_return_test(precedence 14 phase2a)
+add_microcc_return_test(parentheses 20 phase2a)
+add_microcc_return_test(associativity 4 phase2a)
+add_microcc_return_test(unary 13 phase2a)
+add_microcc_return_test(division 5 phase2a)
+add_microcc_return_test(nesting 10 phase2a)
+
+# ============================================================
+# Phase 2B
+# ============================================================
+
+add_microcc_return_test(modulo 8 phase2b)
+add_microcc_return_test(comparisons 6 phase2b)
+add_microcc_return_test(equality 3 phase2b)
+add_microcc_return_test(bitwise 14 phase2b)
+add_microcc_return_test(bitwise_precedence 7 phase2b)
+add_microcc_return_test(shifts 32 phase2b)
+add_microcc_return_test(shift_precedence 2 phase2b)
+add_microcc_return_test(logical 2 phase2b)
+add_microcc_return_test(short_circuit 1 phase2b)
+add_microcc_return_test(ternary 23 phase2b)
+add_microcc_return_test(ternary_nested 7 phase2b)
+add_microcc_return_test(ternary_middle_comma 3 phase2b)
+add_microcc_return_test(comma 14 phase2b)
+add_microcc_return_test(bitwise_not 11 phase2b)
+add_microcc_return_test(unary_chain 1 phase2b)
+add_microcc_return_test(comprehensive 24 phase2b)
+
+# ============================================================
+# Negative tests: expected compilation failures
+# ============================================================
+
+add_microcc_failure_test(
+    missing_colon
+    "expected ':'"
+)
+
+add_microcc_failure_test(
+    missing_parenthesis
+    "expected ')'"
+)
+
+add_microcc_failure_test(
+    assignment_not_supported
+    "assignment '=' is not supported"
+)
+

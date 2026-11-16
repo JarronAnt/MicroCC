@@ -1,7 +1,10 @@
+
 #pragma once
 
 #include "microcc/AST.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -15,17 +18,20 @@ public:
 private:
     void emitFunction(
         std::ostringstream& out,
-        const FunctionDecl& function
+        const FunctionDecl& function,
+        std::size_t& nextLabel
     ) const;
 
     void emitStatement(
         std::ostringstream& out,
-        const Stmt& statement
+        const Stmt& statement,
+        std::size_t& nextLabel
     ) const;
 
     void emitExpression(
         std::ostringstream& out,
-        const Expr& expression
+        const Expr& expression,
+        std::size_t& nextLabel
     ) const;
 
     void emitIntegerLiteral(
@@ -35,3 +41,4 @@ private:
 };
 
 } // namespace microcc
+
