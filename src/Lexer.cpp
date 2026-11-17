@@ -10,14 +10,8 @@
 
 namespace microcc {
 
-Lexer::Lexer(
-    std::string_view source,
-    std::string filename
-)
-    : source_(source)
-    , filename_(std::move(filename))
-{
-}
+Lexer::Lexer(std::string_view source, std::string filename)
+    : source_(source), filename_(std::move(filename)) {}
 
 bool Lexer::isAtEnd() const
 {
@@ -31,18 +25,14 @@ char Lexer::peek() const
 
 char Lexer::peekNext() const
 {
-    if (current_ + 1 >= source_.size()) {
-        return '\0';
-    }
-
-    return source_[current_ + 1];
+    return current_ + 1 >= source_.size()
+        ? '\0'
+        : source_[current_ + 1];
 }
 
 char Lexer::advance()
 {
-    if (isAtEnd()) {
-        return '\0';
-    }
+    if (isAtEnd()) return '\0';
 
     const char c = source_[current_++];
 
@@ -67,19 +57,18 @@ void Lexer::skipWhitespaceAndComments()
             continue;
         }
 
-        // Single-line comments
+        // Single-line comment
         if (c == '/' && peekNext() == '/') {
             advance();
             advance();
 
-            while (!isAtEnd() && peek() != '\n') {
+            while (!isAtEnd() && peek() != '\n')
                 advance();
-            }
 
             continue;
         }
 
-        // Block comments
+        // Block comment
         if (c == '/' && peekNext() == '*') {
             const SourceLocation location{
                 current_,
@@ -96,7 +85,6 @@ void Lexer::skipWhitespaceAndComments()
                 if (peek() == '*' && peekNext() == '/') {
                     advance();
                     advance();
-
                     closed = true;
                     break;
                 }
@@ -104,9 +92,8 @@ void Lexer::skipWhitespaceAndComments()
                 advance();
             }
 
-            if (!closed) {
+            if (!closed)
                 error(location, "unterminated block comment");
-            }
 
             continue;
         }
@@ -140,9 +127,8 @@ Token Lexer::lexIdentifierOrKeyword(
         const auto c =
             static_cast<unsigned char>(peek());
 
-        if (!std::isalnum(c) && c != '_') {
+        if (!std::isalnum(c) && c != '_')
             break;
-        }
 
         advance();
     }
@@ -152,11 +138,15 @@ Token Lexer::lexIdentifierOrKeyword(
 
     TokenKind kind = TokenKind::Identifier;
 
-    if (text == "int") {
-        kind = TokenKind::KwInt;
-    } else if (text == "return") {
-        kind = TokenKind::KwReturn;
-    }
+    if (text == "int") kind = TokenKind::KwInt;
+    if (text == "return") kind = TokenKind::KwReturn;
+    if (text == "if") kind = TokenKind::KwIf;
+    if (text == "else") kind = TokenKind::KwElse;
+    if (text == "while") kind = TokenKind::KwWhile;
+    if (text == "do") kind = TokenKind::KwDo;
+    if (text == "for") kind = TokenKind::KwFor;
+    if (text == "break") kind = TokenKind::KwBreak;
+    if (text == "continue") kind = TokenKind::KwContinue;
 
     return Token{
         kind,
@@ -171,10 +161,12 @@ Token Lexer::lexNumber(
     SourceLocation location
 )
 {
-    while (!isAtEnd() &&
-           std::isdigit(
-               static_cast<unsigned char>(peek())
-           )) {
+    while (
+        !isAtEnd() &&
+        std::isdigit(
+            static_cast<unsigned char>(peek())
+        )
+    ) {
         advance();
     }
 
@@ -190,8 +182,10 @@ Token Lexer::lexNumber(
             value
         );
 
-    if (ec != std::errc{} ||
-        ptr != text.data() + text.size()) {
+    if (
+        ec != std::errc{} ||
+        ptr != text.data() + text.size()
+    ) {
         error(location, "invalid integer literal");
     }
 
@@ -238,7 +232,6 @@ std::vector<Token> Lexer::tokenize()
             tokens.push_back(
                 lexIdentifierOrKeyword(start, location)
             );
-
             continue;
         }
 
@@ -246,7 +239,6 @@ std::vector<Token> Lexer::tokenize()
             tokens.push_back(
                 lexNumber(start, location)
             );
-
             continue;
         }
 
@@ -257,53 +249,164 @@ std::vector<Token> Lexer::tokenize()
         case '(':
             kind = TokenKind::LeftParen;
             break;
-
         case ')':
             kind = TokenKind::RightParen;
             break;
-
         case '{':
             kind = TokenKind::LeftBrace;
             break;
-
         case '}':
             kind = TokenKind::RightBrace;
             break;
-
         case ';':
             kind = TokenKind::Semicolon;
             break;
 
-        // Arithmetic
+        // Arithmetic and compound assignment
         case '+':
-            kind = TokenKind::Plus;
+            if (peek() == '+') {
+                advance();
+                kind = TokenKind::PlusPlus;
+            } else if (peek() == '=') {
+                advance();
+                kind = TokenKind::PlusEqual;
+            } else {
+                kind = TokenKind::Plus;
+            }
             break;
 
         case '-':
-            kind = TokenKind::Minus;
+            if (peek() == '-') {
+                advance();
+                kind = TokenKind::MinusMinus;
+            } else if (peek() == '=') {
+                advance();
+                kind = TokenKind::MinusEqual;
+            } else {
+                kind = TokenKind::Minus;
+            }
             break;
 
         case '*':
-            kind = TokenKind::Star;
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::StarEqual;
+            } else {
+                kind = TokenKind::Star;
+            }
             break;
 
         case '/':
-            kind = TokenKind::Slash;
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::SlashEqual;
+            } else {
+                kind = TokenKind::Slash;
+            }
             break;
 
         case '%':
-            kind = TokenKind::Percent;
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::PercentEqual;
+            } else {
+                kind = TokenKind::Percent;
+            }
             break;
 
-        // Bitwise and conditional
+        // Bitwise operators
         case '^':
-            kind = TokenKind::Caret;
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::CaretEqual;
+            } else {
+                kind = TokenKind::Caret;
+            }
             break;
 
         case '~':
             kind = TokenKind::Tilde;
             break;
 
+        case '&':
+            if (peek() == '&') {
+                advance();
+                kind = TokenKind::AmpAmp;
+            } else if (peek() == '=') {
+                advance();
+                kind = TokenKind::AmpEqual;
+            } else {
+                kind = TokenKind::Ampersand;
+            }
+            break;
+
+        case '|':
+            if (peek() == '|') {
+                advance();
+                kind = TokenKind::PipePipe;
+            } else if (peek() == '=') {
+                advance();
+                kind = TokenKind::PipeEqual;
+            } else {
+                kind = TokenKind::Pipe;
+            }
+            break;
+
+        // Relational and shift operators
+        case '<':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::LessEqual;
+            } else if (peek() == '<') {
+                advance();
+                if (peek() == '=') {
+                    advance();
+                    kind = TokenKind::ShiftLeftEqual;
+                } else {
+                    kind = TokenKind::ShiftLeft;
+                }
+            } else {
+                kind = TokenKind::Less;
+            }
+            break;
+
+        case '>':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::GreaterEqual;
+            } else if (peek() == '>') {
+                advance();
+                if (peek() == '=') {
+                    advance();
+                    kind = TokenKind::ShiftRightEqual;
+                } else {
+                    kind = TokenKind::ShiftRight;
+                }
+            } else {
+                kind = TokenKind::Greater;
+            }
+            break;
+
+        // Assignment and equality
+        case '=':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::EqualEqual;
+            } else {
+                kind = TokenKind::Equal;
+            }
+            break;
+
+        case '!':
+            if (peek() == '=') {
+                advance();
+                kind = TokenKind::BangEqual;
+            } else {
+                kind = TokenKind::Bang;
+            }
+            break;
+
+        // Conditional and comma
         case '?':
             kind = TokenKind::Question;
             break;
@@ -316,79 +419,11 @@ std::vector<Token> Lexer::tokenize()
             kind = TokenKind::Comma;
             break;
 
-        // Comparison and shifts
-        case '<':
-            if (peek() == '=') {
-                advance();
-                kind = TokenKind::LessEqual;
-            } else if (peek() == '<') {
-                advance();
-                kind = TokenKind::ShiftLeft;
-            } else {
-                kind = TokenKind::Less;
-            }
-            break;
-
-        case '>':
-            if (peek() == '=') {
-                advance();
-                kind = TokenKind::GreaterEqual;
-            } else if (peek() == '>') {
-                advance();
-                kind = TokenKind::ShiftRight;
-            } else {
-                kind = TokenKind::Greater;
-            }
-            break;
-
-        // Equality
-        case '=':
-            if (peek() == '=') {
-                advance();
-                kind = TokenKind::EqualEqual;
-            } else {
-                error(
-                    location,
-                    "assignment '=' is not supported until Phase 3"
-                );
-            }
-            break;
-
-        // Logical NOT or inequality
-        case '!':
-            if (peek() == '=') {
-                advance();
-                kind = TokenKind::BangEqual;
-            } else {
-                kind = TokenKind::Bang;
-            }
-            break;
-
-        // Bitwise AND or logical AND
-        case '&':
-            if (peek() == '&') {
-                advance();
-                kind = TokenKind::AmpAmp;
-            } else {
-                kind = TokenKind::Ampersand;
-            }
-            break;
-
-        // Bitwise OR or logical OR
-        case '|':
-            if (peek() == '|') {
-                advance();
-                kind = TokenKind::PipePipe;
-            } else {
-                kind = TokenKind::Pipe;
-            }
-            break;
-
         default:
             error(
                 location,
-                std::string("unexpected character '") +
-                    c + "'"
+                std::string("unexpected character '")
+                    + c + "'"
             );
         }
 

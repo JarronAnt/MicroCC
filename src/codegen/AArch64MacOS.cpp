@@ -7,8 +7,50 @@
 
 namespace microcc {
 
+namespace {
+
 // ============================================================
-// Generate assembly for an entire program
+// Unique assembly labels
+// ============================================================
+
+std::string label(
+    std::size_t& next,
+    const char* category
+)
+{
+    return "Lmicrocc_" +
+           std::string(category) +
+           "_" +
+           std::to_string(next++);
+}
+
+// ============================================================
+// Stack allocation
+//
+// Split larger stack allocations into encodable,
+// 16-byte-aligned AArch64 immediate chunks.
+// ============================================================
+
+void emitAdjustStack(
+    std::ostringstream& out,
+    std::size_t bytes
+)
+{
+    while (bytes != 0) {
+        const auto chunk =
+            bytes > 4080 ? 4080 : bytes;
+
+        out << "    sub sp, sp, #"
+            << chunk << '\n';
+
+        bytes -= chunk;
+    }
+}
+
+} // namespace
+
+// ============================================================
+// Generate an entire program
 // ============================================================
 
 std::string AArch64MacOSCodeGenerator::generate(
@@ -16,19 +58,12 @@ std::string AArch64MacOSCodeGenerator::generate(
 ) const
 {
     std::ostringstream out;
-
-    // Unique counter for branch labels.
     std::size_t nextLabel = 0;
 
     out << ".text\n\n";
 
-    for (const auto& function : program.functions) {
-        emitFunction(
-            out,
-            *function,
-            nextLabel
-        );
-
+    for (const auto& fn : program.functions) {
+        emitFunction(out, *fn, nextLabel);
         out << '\n';
     }
 
@@ -45,41 +80,59 @@ void AArch64MacOSCodeGenerator::emitFunction(
     std::size_t& nextLabel
 ) const
 {
-    // Mach-O uses an underscore prefix for C symbols.
+    const auto end = label(nextLabel, "fn_end");
+
+    // Mach-O uses an underscore prefix.
     const std::string symbol = "_" + function.name;
 
     out << ".globl " << symbol << '\n';
     out << ".p2align 2\n";
     out << symbol << ":\n";
 
-    bool emittedReturn = false;
+    // --------------------------------------------------------
+    // Function prologue
+    // --------------------------------------------------------
 
-    for (const auto& statement : function.body) {
+    // Save frame pointer and link register.
+    out << "    stp x29, x30, [sp, #-16]!\n";
+
+    // Establish the frame pointer.
+    out << "    mov x29, sp\n";
+
+    // Reserve all local variable slots.
+    emitAdjustStack(out, function.stackSize);
+
+    // --------------------------------------------------------
+    // Function body
+    // --------------------------------------------------------
+
+    std::vector<LoopLabels> loops;
+
+    for (const auto& stmt : function.body) {
         emitStatement(
             out,
-            *statement,
-            nextLabel
-        );
-
-        if (
-            dynamic_cast<const ReturnStmt*>(
-                statement.get()
-            ) != nullptr
-        ) {
-            emittedReturn = true;
-        }
-    }
-
-    // Reaching the end of main is equivalent to return 0.
-    if (!emittedReturn && function.name == "main") {
-        out << "    mov w0, #0\n";
-        out << "    ret\n";
-    } else if (!emittedReturn) {
-        throw std::runtime_error(
-            "Phase 2 requires non-main functions "
-            "to contain a return statement"
+            *stmt,
+            nextLabel,
+            end,
+            loops
         );
     }
+
+    // Falling off main returns zero.
+    //
+    // Other non-void functions reaching the end have
+    // undefined return values in C. We emit zero as
+    // a safe Phase 3 placeholder.
+    out << "    mov w0, #0\n";
+
+    // --------------------------------------------------------
+    // Shared function epilogue
+    // --------------------------------------------------------
+
+    out << end << ":\n";
+    out << "    mov sp, x29\n";
+    out << "    ldp x29, x30, [sp], #16\n";
+    out << "    ret\n";
 }
 
 // ============================================================
@@ -88,21 +141,346 @@ void AArch64MacOSCodeGenerator::emitFunction(
 
 void AArch64MacOSCodeGenerator::emitStatement(
     std::ostringstream& out,
-    const Stmt& statement,
-    std::size_t& nextLabel
+    const Stmt& stmt,
+    std::size_t& nextLabel,
+    const std::string& returnLabel,
+    std::vector<LoopLabels>& loops
 ) const
 {
-    if (
-        const auto* ret =
-            dynamic_cast<const ReturnStmt*>(&statement)
-    ) {
+    // --------------------------------------------------------
+    // Return statement
+    // --------------------------------------------------------
+
+    if (const auto* ret =
+            dynamic_cast<const ReturnStmt*>(&stmt)) {
+
         emitExpression(
             out,
             *ret->expression,
             nextLabel
         );
 
-        out << "    ret\n";
+        // Return value is in w0.
+        out << "    b " << returnLabel << '\n';
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Empty statement
+    // --------------------------------------------------------
+
+    if (dynamic_cast<const EmptyStmt*>(&stmt))
+        return;
+
+    // --------------------------------------------------------
+    // Expression statement
+    // --------------------------------------------------------
+
+    if (const auto* expr =
+            dynamic_cast<const ExprStmt*>(&stmt)) {
+
+        emitExpression(
+            out,
+            *expr->expression,
+            nextLabel
+        );
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Local declarations
+    // --------------------------------------------------------
+
+    if (const auto* decl =
+            dynamic_cast<const DeclStmt*>(&stmt)) {
+
+        for (const auto& var : decl->variables) {
+            if (var.initializer) {
+                emitExpression(
+                    out,
+                    *var.initializer,
+                    nextLabel
+                );
+
+                emitStoreLocal(out, var.offset);
+            }
+        }
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Block statements
+    // --------------------------------------------------------
+
+    if (const auto* block =
+            dynamic_cast<const BlockStmt*>(&stmt)) {
+
+        for (const auto& child : block->statements) {
+            emitStatement(
+                out,
+                *child,
+                nextLabel,
+                returnLabel,
+                loops
+            );
+        }
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // If / Else
+    // --------------------------------------------------------
+
+    if (const auto* ifStmt =
+            dynamic_cast<const IfStmt*>(&stmt)) {
+
+        const auto elseLabel =
+            label(nextLabel, "if_else");
+
+        const auto endLabel =
+            label(nextLabel, "if_end");
+
+        emitExpression(
+            out,
+            *ifStmt->condition,
+            nextLabel
+        );
+
+        // Skip then-branch when condition == 0.
+        out << "    cbz w0, "
+            << elseLabel << '\n';
+
+        emitStatement(
+            out,
+            *ifStmt->thenBranch,
+            nextLabel,
+            returnLabel,
+            loops
+        );
+
+        out << "    b " << endLabel << '\n';
+
+        out << elseLabel << ":\n";
+
+        if (ifStmt->elseBranch) {
+            emitStatement(
+                out,
+                *ifStmt->elseBranch,
+                nextLabel,
+                returnLabel,
+                loops
+            );
+        }
+
+        out << endLabel << ":\n";
+        return;
+    }
+
+    // --------------------------------------------------------
+    // While
+    // --------------------------------------------------------
+
+    if (const auto* loop =
+            dynamic_cast<const WhileStmt*>(&stmt)) {
+
+        const auto testLabel =
+            label(nextLabel, "while_test");
+
+        const auto endLabel =
+            label(nextLabel, "while_end");
+
+        // Continue jumps to the condition.
+        out << testLabel << ":\n";
+
+        emitExpression(
+            out,
+            *loop->condition,
+            nextLabel
+        );
+
+        out << "    cbz w0, "
+            << endLabel << '\n';
+
+        loops.push_back({
+            endLabel,
+            testLabel
+        });
+
+        emitStatement(
+            out,
+            *loop->body,
+            nextLabel,
+            returnLabel,
+            loops
+        );
+
+        loops.pop_back();
+
+        out << "    b " << testLabel << '\n';
+        out << endLabel << ":\n";
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Do-While
+    // --------------------------------------------------------
+
+    if (const auto* loop =
+            dynamic_cast<const DoWhileStmt*>(&stmt)) {
+
+        const auto bodyLabel =
+            label(nextLabel, "do_body");
+
+        const auto testLabel =
+            label(nextLabel, "do_test");
+
+        const auto endLabel =
+            label(nextLabel, "do_end");
+
+        out << bodyLabel << ":\n";
+
+        loops.push_back({
+            endLabel,
+            testLabel
+        });
+
+        emitStatement(
+            out,
+            *loop->body,
+            nextLabel,
+            returnLabel,
+            loops
+        );
+
+        loops.pop_back();
+
+        // Continue jumps here, not to the body.
+        out << testLabel << ":\n";
+
+        emitExpression(
+            out,
+            *loop->condition,
+            nextLabel
+        );
+
+        out << "    cbnz w0, "
+            << bodyLabel << '\n';
+
+        out << endLabel << ":\n";
+        return;
+    }
+
+    // --------------------------------------------------------
+    // For
+    // --------------------------------------------------------
+
+    if (const auto* loop =
+            dynamic_cast<const ForStmt*>(&stmt)) {
+
+        const auto testLabel =
+            label(nextLabel, "for_test");
+
+        const auto stepLabel =
+            label(nextLabel, "for_step");
+
+        const auto endLabel =
+            label(nextLabel, "for_end");
+
+        // Initialization runs once.
+        if (loop->initializer) {
+            emitStatement(
+                out,
+                *loop->initializer,
+                nextLabel,
+                returnLabel,
+                loops
+            );
+        }
+
+        // Condition runs before each iteration.
+        out << testLabel << ":\n";
+
+        if (loop->condition) {
+            emitExpression(
+                out,
+                *loop->condition,
+                nextLabel
+            );
+
+            out << "    cbz w0, "
+                << endLabel << '\n';
+        }
+
+        // Loop body.
+        loops.push_back({
+            endLabel,
+            stepLabel
+        });
+
+        emitStatement(
+            out,
+            *loop->body,
+            nextLabel,
+            returnLabel,
+            loops
+        );
+
+        loops.pop_back();
+
+        // Continue must execute the increment.
+        out << stepLabel << ":\n";
+
+        if (loop->increment) {
+            emitExpression(
+                out,
+                *loop->increment,
+                nextLabel
+            );
+        }
+
+        out << "    b " << testLabel << '\n';
+        out << endLabel << ":\n";
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Break
+    // --------------------------------------------------------
+
+    if (dynamic_cast<const BreakStmt*>(&stmt)) {
+        if (loops.empty()) {
+            throw std::runtime_error(
+                "break outside loop"
+            );
+        }
+
+        out << "    b "
+            << loops.back().breakLabel
+            << '\n';
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Continue
+    // --------------------------------------------------------
+
+    if (dynamic_cast<const ContinueStmt*>(&stmt)) {
+        if (loops.empty()) {
+            throw std::runtime_error(
+                "continue outside loop"
+            );
+        }
+
+        out << "    b "
+            << loops.back().continueLabel
+            << '\n';
+
         return;
     }
 
@@ -117,30 +495,160 @@ void AArch64MacOSCodeGenerator::emitStatement(
 
 void AArch64MacOSCodeGenerator::emitExpression(
     std::ostringstream& out,
-    const Expr& expression,
+    const Expr& expr,
     std::size_t& nextLabel
 ) const
 {
-    // ========================================================
+    // --------------------------------------------------------
     // Integer literals
-    // ========================================================
+    // --------------------------------------------------------
 
-    if (
-        const auto* integer =
-            dynamic_cast<const IntegerLiteral*>(&expression)
-    ) {
+    if (const auto* integer =
+            dynamic_cast<const IntegerLiteral*>(&expr)) {
+
         emitIntegerLiteral(out, integer->value);
         return;
     }
 
-    // ========================================================
-    // Unary expressions
-    // ========================================================
+    // --------------------------------------------------------
+    // Variable access
+    // --------------------------------------------------------
 
-    if (
-        const auto* unary =
-            dynamic_cast<const UnaryExpr*>(&expression)
-    ) {
+    if (const auto* var =
+            dynamic_cast<const VariableExpr*>(&expr)) {
+
+        emitLoadLocal(out, var->offset);
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Prefix and postfix ++ / --
+    // --------------------------------------------------------
+
+    if (const auto* update =
+            dynamic_cast<const UpdateExpr*>(&expr)) {
+
+        emitLoadLocal(out, update->offset);
+
+        // Postfix must return the original value.
+        if (!update->prefix) {
+            out << "    mov w11, w0\n";
+        }
+
+        out << (
+            update->increment
+                ? "    add w0, w0, #1\n"
+                : "    sub w0, w0, #1\n"
+        );
+
+        emitStoreLocal(out, update->offset);
+
+        if (!update->prefix) {
+            out << "    mov w0, w11\n";
+        }
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Assignment expressions
+    // --------------------------------------------------------
+
+    if (const auto* assign =
+            dynamic_cast<const AssignExpr*>(&expr)) {
+
+        // Evaluate the right-hand side.
+        emitExpression(
+            out,
+            *assign->value,
+            nextLabel
+        );
+
+        // Simple assignment: x = value
+        if (assign->op == AssignOperator::Set) {
+            emitStoreLocal(out, assign->offset);
+            return;
+        }
+
+        // Compound assignments:
+        //
+        // Save RHS, load old LHS, compute, then store.
+
+        out << "    sub sp, sp, #16\n";
+        out << "    str w0, [sp]\n";
+
+        emitLoadLocal(out, assign->offset);
+
+        // Old left value.
+        out << "    mov w9, w0\n";
+
+        // Restore RHS.
+        out << "    ldr w0, [sp]\n";
+        out << "    add sp, sp, #16\n";
+
+        BinaryOperator op;
+
+        switch (assign->op) {
+        case AssignOperator::Add:
+            op = BinaryOperator::Add;
+            break;
+
+        case AssignOperator::Subtract:
+            op = BinaryOperator::Subtract;
+            break;
+
+        case AssignOperator::Multiply:
+            op = BinaryOperator::Multiply;
+            break;
+
+        case AssignOperator::Divide:
+            op = BinaryOperator::Divide;
+            break;
+
+        case AssignOperator::Remainder:
+            op = BinaryOperator::Remainder;
+            break;
+
+        case AssignOperator::BitwiseAnd:
+            op = BinaryOperator::BitwiseAnd;
+            break;
+
+        case AssignOperator::BitwiseOr:
+            op = BinaryOperator::BitwiseOr;
+            break;
+
+        case AssignOperator::BitwiseXor:
+            op = BinaryOperator::BitwiseXor;
+            break;
+
+        case AssignOperator::ShiftLeft:
+            op = BinaryOperator::ShiftLeft;
+            break;
+
+        case AssignOperator::ShiftRight:
+            op = BinaryOperator::ShiftRight;
+            break;
+
+        case AssignOperator::Set:
+            throw std::runtime_error(
+                "invalid compound assignment"
+            );
+        }
+
+        emitBinaryOperation(out, op);
+
+        // The assigned value remains in w0.
+        emitStoreLocal(out, assign->offset);
+        return;
+    }
+
+    // --------------------------------------------------------
+    // Unary expressions
+    // --------------------------------------------------------
+
+    if (const auto* unary =
+            dynamic_cast<const UnaryExpr*>(&expr)) {
+
         emitExpression(
             out,
             *unary->operand,
@@ -149,7 +657,6 @@ void AArch64MacOSCodeGenerator::emitExpression(
 
         switch (unary->op) {
         case UnaryOperator::Plus:
-            // +x leaves the operand unchanged.
             break;
 
         case UnaryOperator::Negate:
@@ -157,7 +664,6 @@ void AArch64MacOSCodeGenerator::emitExpression(
             break;
 
         case UnaryOperator::LogicalNot:
-            // Result is 1 if operand is zero, otherwise 0.
             out << "    cmp w0, #0\n";
             out << "    cset w0, eq\n";
             break;
@@ -170,75 +676,55 @@ void AArch64MacOSCodeGenerator::emitExpression(
         return;
     }
 
-    // ========================================================
-    // Conditional expression
-    //
-    // condition ? thenExpr : elseExpr
-    //
-    // Only one branch should execute.
-    // ========================================================
+    // --------------------------------------------------------
+    // Conditional ?:
+    // --------------------------------------------------------
 
-    if (
-        const auto* conditional =
-            dynamic_cast<const ConditionalExpr*>(&expression)
-    ) {
-        const auto id = nextLabel++;
+    if (const auto* cond =
+            dynamic_cast<const ConditionalExpr*>(&expr)) {
 
-        const std::string elseLabel =
-            "Lmicrocc_cond_else_" + std::to_string(id);
+        const auto elseLabel =
+            label(nextLabel, "cond_else");
 
-        const std::string endLabel =
-            "Lmicrocc_cond_end_" + std::to_string(id);
+        const auto endLabel =
+            label(nextLabel, "cond_end");
 
-        // Evaluate condition into w0.
         emitExpression(
             out,
-            *conditional->condition,
+            *cond->condition,
             nextLabel
         );
 
-        // If w0 == 0, jump to the else branch.
-        out << "    cbz w0, " << elseLabel << '\n';
+        out << "    cbz w0, "
+            << elseLabel << '\n';
 
-        // True branch.
         emitExpression(
             out,
-            *conditional->thenExpr,
+            *cond->thenExpr,
             nextLabel
         );
 
-        // Skip the false branch.
         out << "    b " << endLabel << '\n';
-
-        // False branch.
         out << elseLabel << ":\n";
 
         emitExpression(
             out,
-            *conditional->elseExpr,
+            *cond->elseExpr,
             nextLabel
         );
 
-        // Both branches meet here.
         out << endLabel << ":\n";
-
         return;
     }
 
-    // ========================================================
+    // --------------------------------------------------------
     // Binary expressions
-    // ========================================================
+    // --------------------------------------------------------
 
-    if (
-        const auto* binary =
-            dynamic_cast<const BinaryExpr*>(&expression)
-    ) {
-        // ====================================================
-        // Comma operator
-        //
-        // Evaluate left, discard it, evaluate right.
-        // ====================================================
+    if (const auto* binary =
+            dynamic_cast<const BinaryExpr*>(&expr)) {
 
+        // Comma: evaluate left, discard it, evaluate right.
         if (binary->op == BinaryOperator::Comma) {
             emitExpression(
                 out,
@@ -255,121 +741,60 @@ void AArch64MacOSCodeGenerator::emitExpression(
             return;
         }
 
-        // ====================================================
-        // Logical AND - short-circuit evaluation
-        //
-        // If left == 0, skip right and return 0.
-        // ====================================================
+        // Logical AND/OR: short-circuit evaluation.
+        if (
+            binary->op == BinaryOperator::LogicalAnd ||
+            binary->op == BinaryOperator::LogicalOr
+        ) {
+            const bool isAnd =
+                binary->op == BinaryOperator::LogicalAnd;
 
-        if (binary->op == BinaryOperator::LogicalAnd) {
-            const auto id = nextLabel++;
+            const auto shortLabel =
+                label(nextLabel, "logical_short");
 
-            const std::string falseLabel =
-                "Lmicrocc_and_false_" +
-                std::to_string(id);
+            const auto endLabel =
+                label(nextLabel, "logical_end");
 
-            const std::string endLabel =
-                "Lmicrocc_and_end_" +
-                std::to_string(id);
-
-            // Evaluate left.
             emitExpression(
                 out,
                 *binary->left,
                 nextLabel
             );
 
-            // Left == 0 -> result is false.
-            out << "    cbz w0, "
-                << falseLabel << '\n';
+            out << (
+                isAnd
+                    ? "    cbz w0, "
+                    : "    cbnz w0, "
+            ) << shortLabel << '\n';
 
-            // Otherwise evaluate right.
             emitExpression(
                 out,
                 *binary->right,
                 nextLabel
             );
 
-            // Normalize right operand to 0 or 1.
             out << "    cmp w0, #0\n";
             out << "    cset w0, ne\n";
-
             out << "    b " << endLabel << '\n';
 
-            out << falseLabel << ":\n";
-            out << "    mov w0, #0\n";
+            out << shortLabel << ":\n";
+            out << (
+                isAnd
+                    ? "    mov w0, #0\n"
+                    : "    mov w0, #1\n"
+            );
 
             out << endLabel << ":\n";
-
             return;
         }
 
-        // ====================================================
-        // Logical OR - short-circuit evaluation
-        //
-        // If left != 0, skip right and return 1.
-        // ====================================================
-
-        if (binary->op == BinaryOperator::LogicalOr) {
-            const auto id = nextLabel++;
-
-            const std::string trueLabel =
-                "Lmicrocc_or_true_" +
-                std::to_string(id);
-
-            const std::string endLabel =
-                "Lmicrocc_or_end_" +
-                std::to_string(id);
-
-            // Evaluate left.
-            emitExpression(
-                out,
-                *binary->left,
-                nextLabel
-            );
-
-            // Left != 0 -> result is true.
-            out << "    cbnz w0, "
-                << trueLabel << '\n';
-
-            // Otherwise evaluate right.
-            emitExpression(
-                out,
-                *binary->right,
-                nextLabel
-            );
-
-            // Normalize right operand to 0 or 1.
-            out << "    cmp w0, #0\n";
-            out << "    cset w0, ne\n";
-
-            out << "    b " << endLabel << '\n';
-
-            out << trueLabel << ":\n";
-            out << "    mov w0, #1\n";
-
-            out << endLabel << ":\n";
-
-            return;
-        }
-
-        // ====================================================
-        // General binary expression
-        //
-        // 1. Evaluate left -> w0
-        // 2. Save left on the stack
-        // 3. Evaluate right -> w0
-        // 4. Restore left -> w9
-        // 5. Apply operator -> w0
-        // ====================================================
-
+        // General binary expression.
         emitExpression(
             out,
             *binary->left,
             nextLabel
         );
 
-        // Preserve stack alignment.
         out << "    sub sp, sp, #16\n";
         out << "    str w0, [sp]\n";
 
@@ -382,120 +807,106 @@ void AArch64MacOSCodeGenerator::emitExpression(
         out << "    ldr w9, [sp]\n";
         out << "    add sp, sp, #16\n";
 
-        // Left operand  = w9
-        // Right operand = w0
-        // Result        = w0
-
-        switch (binary->op) {
-        // ====================================================
-        // Arithmetic
-        // ====================================================
-
-        case BinaryOperator::Add:
-            out << "    add w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::Subtract:
-            out << "    sub w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::Multiply:
-            out << "    mul w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::Divide:
-            out << "    sdiv w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::Remainder:
-            // quotient = left / right
-            out << "    sdiv w10, w9, w0\n";
-
-            // remainder = left - quotient * right
-            out << "    msub w0, w10, w0, w9\n";
-            break;
-
-        // ====================================================
-        // Shifts
-        // ====================================================
-
-        case BinaryOperator::ShiftLeft:
-            out << "    lsl w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::ShiftRight:
-            out << "    asr w0, w9, w0\n";
-            break;
-
-        // ====================================================
-        // Relational
-        // ====================================================
-
-        case BinaryOperator::Less:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, lt\n";
-            break;
-
-        case BinaryOperator::LessEqual:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, le\n";
-            break;
-
-        case BinaryOperator::Greater:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, gt\n";
-            break;
-
-        case BinaryOperator::GreaterEqual:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, ge\n";
-            break;
-
-        // ====================================================
-        // Equality
-        // ====================================================
-
-        case BinaryOperator::Equal:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, eq\n";
-            break;
-
-        case BinaryOperator::NotEqual:
-            out << "    cmp w9, w0\n";
-            out << "    cset w0, ne\n";
-            break;
-
-        // ====================================================
-        // Bitwise
-        // ====================================================
-
-        case BinaryOperator::BitwiseAnd:
-            out << "    and w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::BitwiseXor:
-            out << "    eor w0, w9, w0\n";
-            break;
-
-        case BinaryOperator::BitwiseOr:
-            out << "    orr w0, w9, w0\n";
-            break;
-
-        // Handled separately above.
-        case BinaryOperator::LogicalAnd:
-        case BinaryOperator::LogicalOr:
-        case BinaryOperator::Comma:
-            throw std::runtime_error(
-                "internal error: unexpected binary operator"
-            );
-        }
-
+        emitBinaryOperation(out, binary->op);
         return;
     }
 
     throw std::runtime_error(
         "unsupported expression in AArch64 backend"
     );
+}
+
+// ============================================================
+// Binary operation instruction selection
+//
+// Input:  w9 = left, w0 = right
+// Output: w0 = result
+// ============================================================
+
+void AArch64MacOSCodeGenerator::emitBinaryOperation(
+    std::ostringstream& out,
+    BinaryOperator op
+) const
+{
+    switch (op) {
+    case BinaryOperator::Add:
+        out << "    add w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::Subtract:
+        out << "    sub w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::Multiply:
+        out << "    mul w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::Divide:
+        out << "    sdiv w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::Remainder:
+        out << "    sdiv w10, w9, w0\n";
+        out << "    msub w0, w10, w0, w9\n";
+        break;
+
+    case BinaryOperator::ShiftLeft:
+        out << "    lsl w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::ShiftRight:
+        out << "    asr w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::Less:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, lt\n";
+        break;
+
+    case BinaryOperator::LessEqual:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, le\n";
+        break;
+
+    case BinaryOperator::Greater:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, gt\n";
+        break;
+
+    case BinaryOperator::GreaterEqual:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, ge\n";
+        break;
+
+    case BinaryOperator::Equal:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, eq\n";
+        break;
+
+    case BinaryOperator::NotEqual:
+        out << "    cmp w9, w0\n";
+        out << "    cset w0, ne\n";
+        break;
+
+    case BinaryOperator::BitwiseAnd:
+        out << "    and w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::BitwiseXor:
+        out << "    eor w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::BitwiseOr:
+        out << "    orr w0, w9, w0\n";
+        break;
+
+    case BinaryOperator::LogicalAnd:
+    case BinaryOperator::LogicalOr:
+    case BinaryOperator::Comma:
+        throw std::runtime_error(
+            "internal error: non-arithmetic binary op"
+        );
+    }
 }
 
 // ============================================================
@@ -510,19 +921,82 @@ void AArch64MacOSCodeGenerator::emitIntegerLiteral(
     const auto bits =
         static_cast<std::uint32_t>(value);
 
-    const std::uint32_t low =
-        bits & 0xFFFFU;
+    out << "    movz w0, #"
+        << (bits & 0xFFFFU)
+        << '\n';
 
-    const std::uint32_t high =
-        (bits >> 16U) & 0xFFFFU;
-
-    out << "    movz w0, #" << low << '\n';
-
-    if (high != 0) {
+    if ((bits >> 16U) != 0) {
         out << "    movk w0, #"
-            << high
+            << (bits >> 16U)
             << ", lsl #16\n";
     }
+}
+
+// ============================================================
+// Local variable address
+//
+// Local variables live below x29.
+// x10 = x29 - offset
+// ============================================================
+
+void AArch64MacOSCodeGenerator::emitLocalAddress(
+    std::ostringstream& out,
+    std::size_t offset
+) const
+{
+    const auto bits =
+        static_cast<std::uint64_t>(offset);
+
+    out << "    movz x10, #"
+        << (bits & 0xFFFFU)
+        << '\n';
+
+    for (
+        unsigned shift = 16;
+        shift < 64;
+        shift += 16
+    ) {
+        const auto chunk =
+            (bits >> shift) & 0xFFFFU;
+
+        if (chunk != 0) {
+            out << "    movk x10, #"
+                << chunk
+                << ", lsl #"
+                << shift
+                << '\n';
+        }
+    }
+
+    out << "    sub x10, x29, x10\n";
+}
+
+// ============================================================
+// Local variable load
+// ============================================================
+
+void AArch64MacOSCodeGenerator::emitLoadLocal(
+    std::ostringstream& out,
+    std::size_t offset
+) const
+{
+    emitLocalAddress(out, offset);
+
+    out << "    ldr w0, [x10]\n";
+}
+
+// ============================================================
+// Local variable store
+// ============================================================
+
+void AArch64MacOSCodeGenerator::emitStoreLocal(
+    std::ostringstream& out,
+    std::size_t offset
+) const
+{
+    emitLocalAddress(out, offset);
+
+    out << "    str w0, [x10]\n";
 }
 
 } // namespace microcc

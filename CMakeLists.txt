@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     MicroCC
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "A tiny educational C compiler written in modern C++"
     LANGUAGES CXX
 )
@@ -67,7 +67,7 @@ if(NOT APPLE)
 endif()
 
 # ============================================================
-# Testing
+# Testing helpers
 # ============================================================
 
 enable_testing()
@@ -93,6 +93,19 @@ function(add_microcc_failure_test name diagnostic)
             -DMICROCC=$<TARGET_FILE:microcc>
             -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/${name}.c
             -DOUTPUT=${PROJECT_BINARY_DIR}/phase2b_error_${name}.s
+            -DEXPECTED_DIAGNOSTIC=${diagnostic}
+            -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_failure_test.cmake
+    )
+endfunction()
+
+function(add_microcc_phase3_failure name diagnostic)
+    add_test(
+        NAME phase3.error_${name}
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DMICROCC=$<TARGET_FILE:microcc>
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/integration/${name}.c
+            -DOUTPUT=${PROJECT_BINARY_DIR}/phase3_error_${name}.s
             -DEXPECTED_DIAGNOSTIC=${diagnostic}
             -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_failure_test.cmake
     )
@@ -136,10 +149,6 @@ add_microcc_return_test(bitwise_not 11 phase2b)
 add_microcc_return_test(unary_chain 1 phase2b)
 add_microcc_return_test(comprehensive 24 phase2b)
 
-# ============================================================
-# Negative tests: expected compilation failures
-# ============================================================
-
 add_microcc_failure_test(
     missing_colon
     "expected ':'"
@@ -150,8 +159,70 @@ add_microcc_failure_test(
     "expected ')'"
 )
 
-add_microcc_failure_test(
-    assignment_not_supported
-    "assignment '=' is not supported"
+# ============================================================
+# Phase 3 — Variables and Control Flow
+# ============================================================
+
+add_microcc_return_test(sum_even 20 phase3)
+add_microcc_return_test(variables 17 phase3)
+add_microcc_return_test(assignments 23 phase3)
+add_microcc_return_test(compound_ops 9 phase3)
+add_microcc_return_test(prefix_postfix 16 phase3)
+add_microcc_return_test(shadowing 10 phase3)
+add_microcc_return_test(if_else 7 phase3)
+add_microcc_return_test(dangling_else 2 phase3)
+add_microcc_return_test(while_loop 10 phase3)
+add_microcc_return_test(do_while 10 phase3)
+add_microcc_return_test(for_loop 20 phase3)
+add_microcc_return_test(for_continue 20 phase3)
+add_microcc_return_test(loop_break 4 phase3)
+add_microcc_return_test(nested_loop 6 phase3)
+add_microcc_return_test(for_empty 5 phase3)
+add_microcc_return_test(assignment_expr 24 phase3)
+add_microcc_return_test(multiple_declarators 7 phase3)
+add_microcc_return_test(logical_side_effects 9 phase3)
+add_microcc_return_test(ternary_assignment 14 phase3)
+add_microcc_return_test(do_continue 7 phase3)
+add_microcc_return_test(for_comma 16 phase3)
+add_microcc_return_test(early_return 42 phase3)
+add_microcc_return_test(nested_assign 21 phase3)
+
+# ============================================================
+# Phase 3 — Expected compilation failures
+# ============================================================
+
+add_microcc_phase3_failure(
+    undeclared_variable
+    "undeclared identifier"
+)
+
+add_microcc_phase3_failure(
+    redeclaration
+    "redeclaration"
+)
+
+add_microcc_phase3_failure(
+    for_scope
+    "undeclared identifier"
+)
+
+add_microcc_phase3_failure(
+    break_outside
+    "'break' outside a loop"
+)
+
+add_microcc_phase3_failure(
+    continue_outside
+    "'continue' outside a loop"
+)
+
+add_microcc_phase3_failure(
+    invalid_assignment_target
+    "left side of assignment must be a variable"
+)
+
+add_microcc_phase3_failure(
+    invalid_update_target
+    "increment/decrement requires a variable"
 )
 

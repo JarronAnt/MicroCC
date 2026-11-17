@@ -1,56 +1,74 @@
 
 # MicroCC
 
-**MicroCC** is a lightweight C compiler written from scratch in **modern C++20**, designed to explore compiler architecture, language implementation, and low-level systems programming.
+**MicroCC** is a lightweight C compiler written from scratch in **modern C++20**, built to explore compiler architecture, language implementation, and low-level systems programming.
 
-The project is built incrementally, with each development phase extending a functional compiler. It covers lexical analysis, recursive-descent parsing, abstract syntax trees (ASTs), native assembly generation, and eventually intermediate representations, optimization, and register allocation.
+The project follows an incremental development approach, with each phase extending a functional compiler. MicroCC implements its own lexical analyzer, recursive-descent parser, abstract syntax tree (AST), and native assembly backend without relying on LLVM or external parser generators.
 
-The long-term goal is to develop a small but capable compiler that can compile real-world C programs while remaining understandable, modular, and educational.
+The long-term goal is to build a small but capable compiler that can compile useful real-world C programs while remaining modular, understandable, and educational.
 
-> **Current Status: Phase 2B Complete — Expanded Expression Parsing**
+> **Current Status: Phase 3 — Variables and Control Flow Implemented**
 >
-> MicroCC currently targets **AArch64 macOS (Apple Silicon)** and compiles a subset of C directly into native ARM64 assembly.
+> MicroCC currently targets **AArch64 macOS (Apple Silicon)** and compiles a subset of C into native ARM64 assembly and Mach-O executables.
 
 ## Features
 
 ### Currently Implemented
 
-**Compiler Infrastructure**
+#### Compiler Infrastructure
+
 - C++20 compiler implementation
 - CMake and Ninja build system
-- Modular frontend and backend architecture
+- Modular compiler frontend and backend
 - Command-line compiler driver
 - C source file loading
-- Native Mach-O executable generation
-- Assembly output (`-S`)
+- Native AArch64 assembly generation
+- Mach-O executable generation
+- Assembly-only output (`-S`)
 - Token inspection (`--dump-tokens`)
 - Source-location-aware compiler diagnostics
-- Integration testing with CTest
+- Automated integration testing with CTest
 
-**Lexical Analysis**
+#### Lexical Analysis
+
 - Identifiers and keywords
 - Decimal integer literals
-- Single-character and multi-character operators
-- Punctuation and grouping symbols
-- Whitespace handling
-- Single-line (`//`) comments
-- Multi-line (`/* ... */`) comments
-- Line and column tracking
+- Arithmetic operators
+- Comparison and logical operators
+- Bitwise operators
+- Assignment and compound assignment operators
+- Increment and decrement operators
+- Single-character and multi-character tokens
 - Longest-match operator tokenization
+- Single-line (`//`) and block (`/* */`) comments
+- Line and column tracking
+- Lexical error detection
 
-**Parsing**
+#### Parsing and Language Features
+
 - Handwritten recursive-descent parser
 - Abstract syntax tree construction
-- Integer-returning function definitions without parameters
-- Return statements
 - Operator precedence and associativity
-- Parenthesized and nested expressions
+- Integer literals and expressions
 - Unary and binary expressions
 - Conditional expressions
 - Comma expressions
-- Syntax-error detection
+- Local variable declarations
+- Variable initialization
+- Assignment expressions
+- Compound assignments
+- Prefix and postfix increment/decrement
+- Expression statements
+- Block statements
+- Nested lexical scopes
+- Variable shadowing
+- Symbol tables and variable resolution
+- Return statements
+- Conditional statements (`if` / `else`)
+- Loops (`while`, `do-while`, `for`)
+- Loop control (`break`, `continue`)
 
-**Supported Expression Operators**
+#### Supported Operators
 
 | Category | Operators |
 |----------|-----------|
@@ -61,42 +79,53 @@ The long-term goal is to develop a small but capable compiler that can compile r
 | Logical | `&&`, `\|\|`, `!` |
 | Bitwise | `&`, `\|`, `^`, `~` |
 | Bit Shifts | `<<`, `>>` |
+| Assignment | `=` |
+| Compound Assignment | `+=`, `-=`, `*=`, `/=`, `%=` |
+| Bitwise Assignment | `&=`, `\|=`, `^=`, `<<=`, `>>=` |
+| Increment/Decrement | `++`, `--` |
 | Conditional | `?:` |
 | Sequencing | `,` |
 | Grouping | `(`, `)` |
 
-**Code Generation**
-- Native AArch64 assembly generation
-- ARM64 arithmetic instructions
-- Signed integer division and remainder
-- Bitwise operations and shifts
-- Comparison instructions
-- Conditional branching
-- Short-circuit logical evaluation
-- Recursive expression evaluation
-- Stack-based intermediate operand storage
-- 16-byte stack alignment
+Logical operators implement short-circuit evaluation, and conditional expressions evaluate only the selected branch.
+
+#### AArch64 Code Generation
+
+- Native ARM64 assembly generation
 - Mach-O symbol naming conventions
-- Automatic assembly and linking using Apple Clang
+- Function prologue and epilogue generation
+- Frame pointer management
+- Local variable stack allocation
+- Local variable loads and stores
+- Stack-based expression evaluation
+- 16-byte stack alignment
+- Arithmetic and bitwise instructions
+- Signed integer division and remainder
+- Comparison and conditional branch instructions
+- Short-circuit expression evaluation
+- Conditional statement branching
+- Loop control-flow generation
+- Nested loop handling
+- Shared function return epilogues
+- Automatic assembly and linking through Apple Clang
 
 ### Not Yet Implemented
 
-- Local and global variables
-- Assignments and compound assignments
-- Increment/decrement operators
-- `if`, `else`, `while`, and `for` statements
 - Function parameters and function calls
+- Recursive functions
+- Global variables
 - Pointers and arrays
 - String and character literals
+- Additional integer types and floating-point types
 - Structs, unions, enums, and typedefs
 - Full C type checking and conversions
 - Preprocessor directives
 - Intermediate representation (IR)
-- Optimization passes
+- Compiler optimization passes
 - Register allocation
 - Additional target architectures
 
-MicroCC is currently an educational compiler implementing a limited C subset, not a fully conforming C compiler.
+MicroCC currently implements a limited subset of C, rather than the complete C11 language.
 
 ---
 
@@ -104,7 +133,7 @@ MicroCC is currently an educational compiler implementing a limited C subset, no
 
 ### Requirements
 
-MicroCC currently builds and runs natively on Apple Silicon macOS.
+MicroCC currently targets **macOS on Apple Silicon**.
 
 Requirements:
 
@@ -114,40 +143,40 @@ Requirements:
 - Ninja
 - Xcode Command Line Tools
 
-Install the required build tools with Homebrew:
+Install build tools using Homebrew:
 
 ```bash
 brew install cmake ninja
 ```
 
-Install Apple's Command Line Tools if necessary:
+Install Apple's command-line developer tools if necessary:
 
 ```bash
 xcode-select --install
 ```
 
-### Build
-
-Clone the repository:
+### Clone the Repository
 
 ```bash
 git clone https://github.com/JarronAnt/MicroCC.git
 cd MicroCC
 ```
 
-Configure:
+### Configure and Build
+
+Configure the project:
 
 ```bash
 cmake -S . -B build -G Ninja
 ```
 
-Build:
+Build the compiler:
 
 ```bash
 cmake --build build
 ```
 
-The resulting compiler executable is located at:
+The resulting executable is located at:
 
 ```text
 build/microcc
@@ -155,15 +184,21 @@ build/microcc
 
 ### Compile Your First Program
 
-Create a file named `hello.c`:
+Create `hello.c`:
 
 ```c
 int main() {
-    return 42;
+    int result = 0;
+
+    for (int i = 1; i <= 5; i++) {
+        result += i;
+    }
+
+    return result;
 }
 ```
 
-Compile:
+Compile using MicroCC:
 
 ```bash
 ./build/microcc hello.c -o hello
@@ -176,250 +211,352 @@ Execute:
 echo $?
 ```
 
-Expected:
+Expected result:
 
 ```text
-42
+15
 ```
 
-MicroCC compiles the C source itself and generates ARM64 assembly. Apple Clang is only used afterward to assemble and link the generated output.
+MicroCC parses the C source and generates ARM64 assembly itself. Apple Clang is used only to assemble and link the generated output.
 
-**Note:** Shell exit codes are limited to values from 0 to 255. Programs returning larger or negative integers cannot have their full return value inspected through `echo $?`.
+**Note:** Shell exit statuses are limited to values between 0 and 255. Larger or negative return values cannot be fully inspected through `echo $?`.
 
 ---
 
-## Expression Compilation
+## Example Programs
 
-MicroCC supports nested integer expressions with C-style operator precedence and associativity.
+### 1. Variables and Assignments
 
-### Arithmetic
-
-```c
-int main() {
-    return (10 + 5) * 2 - 24 / (3 + 1);
-}
-```
-
-Expected return value:
-
-```text
-24
-```
-
-### Bitwise Operations
+MicroCC supports local integer variables, initialization, and assignment expressions.
 
 ```c
 int main() {
-    return (6 & 3) + (6 | 3) + (6 ^ 3);
+    int a = 10;
+    int b = 20;
+
+    int result = a + b;
+
+    result *= 2;
+    result -= 15;
+
+    return result;
 }
 ```
 
-Expected return value:
+Expected return value: `45`.
 
-```text
-14
-```
-
-### Bit Shifts
+Multiple variables can be declared together:
 
 ```c
 int main() {
-    return (3 << 3) + (32 >> 2);
+    int a = 2, b = 3, c = a + b;
+    return c;
 }
 ```
 
-Expected return value:
+Expected return value: `5`.
 
-```text
-32
-```
-
-### Logical Expressions
+Assignments can also be chained:
 
 ```c
 int main() {
-    return (5 > 3) && (10 != 4);
+    int a = 0, b = 0, c = 0;
+
+    a = b = c = 7;
+
+    return a + b + c;
 }
 ```
 
-Expected return value:
+Expected return value: `21`.
 
-```text
-1
-```
+### 2. Conditional Statements
 
-Logical operations return `0` for false and `1` for true.
-
-### Short-Circuit Evaluation
-
-Logical AND and OR correctly implement C's short-circuit evaluation rules.
+MicroCC supports `if`, `else`, and nested conditional statements.
 
 ```c
 int main() {
-    return (0 && (10 / 0)) || (1 && 5);
+    int x = 15;
+
+    if (x > 20) {
+        return 1;
+    } else if (x > 10) {
+        return 2;
+    } else {
+        return 3;
+    }
 }
 ```
 
-Expected return value:
+Expected return value: `2`.
 
-```text
-1
-```
+Conditions support all previously implemented arithmetic, comparison, logical, and bitwise expressions.
 
-The right-hand side of `&&` is skipped when its left operand is false.
-
-Similarly, the right-hand side of `||` is skipped when its left operand is true.
-
-This is implemented through conditional branches in the generated assembly rather than by eagerly evaluating both operands.
-
-### Conditional Expressions
-
-MicroCC supports C's ternary conditional operator:
+### 3. While Loops
 
 ```c
 int main() {
-    return (5 > 3) ? 42 : 0;
+    int i = 0;
+    int sum = 0;
+
+    while (i < 5) {
+        sum += i;
+        i++;
+    }
+
+    return sum;
 }
 ```
 
-Expected return value:
+Expected return value: `10`.
 
-```text
-42
-```
-
-Nested conditional expressions are also supported:
+### 4. Do-While Loops
 
 ```c
 int main() {
-    return 0 ? 1 : 1 ? 7 : 9;
+    int i = 1;
+    int sum = 0;
+
+    do {
+        sum += i;
+        i++;
+    } while (i <= 4);
+
+    return sum;
 }
 ```
 
-Expected return value:
+Expected return value: `10`.
 
-```text
-7
-```
+Unlike a `while` loop, a `do-while` loop executes its body at least once.
 
-Conditional expressions are right-associative, and only the selected result branch is evaluated.
-
-### Comma Expressions
+### 5. For Loops
 
 ```c
 int main() {
-    return (10, 3 + 4) * 2;
+    int sum = 0;
+
+    for (int i = 0; i < 10; i++) {
+        if (i % 2 == 0) {
+            sum += i;
+        }
+    }
+
+    return sum;
 }
 ```
 
-Expected return value:
+Expected return value: `20`.
 
-```text
-14
-```
+Variables declared in a `for` initializer remain visible for the duration of the loop and go out of scope afterward.
 
-The left operand is evaluated and its result discarded. The right operand determines the expression's value.
-
-### Combining Operators
+### 6. Break and Continue
 
 ```c
 int main() {
-    return (
-        ((5 * 4) == 20) &&
-        ((16 >> 2) == 4) &&
-        ((7 & 3) != 0)
-    ) ? 42 : 0;
+    int sum = 0;
+
+    for (int i = 0; i < 10; i++) {
+        if (i == 7)
+            break;
+
+        if (i % 2 != 0)
+            continue;
+
+        sum += i;
+    }
+
+    return sum;
 }
 ```
 
-Expected return value:
+Expected return value: `12`.
 
-```text
-42
+MicroCC correctly handles the different `continue` destinations for `while`, `do-while`, and `for` loops.
+
+### 7. Nested Loops
+
+```c
+int main() {
+    int count = 0;
+
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (j == 2)
+                break;
+
+            count++;
+        }
+    }
+
+    return count;
+}
 ```
+
+Expected return value: `6`.
+
+Each loop maintains its own break and continue targets, allowing nested loops to operate independently.
+
+### 8. Lexical Scoping and Shadowing
+
+MicroCC uses lexical scopes and supports variable shadowing.
+
+```c
+int main() {
+    int x = 10;
+
+    {
+        int x = 20;
+        x += 5;
+    }
+
+    return x;
+}
+```
+
+Expected return value: `10`.
+
+The inner `x` occupies a separate stack slot and does not modify the outer variable.
+
+Declaring a variable twice in the same scope produces a compilation error.
+
+### 9. Factorial Using a Loop
+
+MicroCC can now compile more substantial algorithms.
+
+```c
+int main() {
+    int n = 5;
+    int result = 1;
+
+    for (int i = 2; i <= n; i++) {
+        result *= i;
+    }
+
+    return result;
+}
+```
+
+Expected return value: `120`.
+
+Recursive factorial will become possible in Phase 4 when function calls are introduced.
+
+### 10. Short-Circuit Expressions With Side Effects
+
+Phase 3 introduces assignments inside expressions, making short-circuit behavior particularly important.
+
+```c
+int main() {
+    int x = 0;
+
+    int result = (0 && (x = 5)) ||
+                 (1 && (x = 8));
+
+    return x + result;
+}
+```
+
+Expected return value: `9`.
+
+The assignment `x = 5` is skipped because the first logical AND expression short-circuits.
 
 ---
 
 ## Compiler Architecture
 
-MicroCC currently uses a straightforward frontend-to-backend compilation pipeline.
+MicroCC follows a modular compilation pipeline.
 
 ```text
-              C Source Code
-                    |
-                    v
-             +-------------+
-             |    Lexer    |
-             +-------------+
-                    |
-                    v
-                 Tokens
-                    |
-                    v
-             +-------------+
-             |   Parser    |
-             +-------------+
-                    |
-                    v
-           Abstract Syntax Tree
-                    |
-                    v
-        +-----------------------+
-        | AArch64 Code Generator|
-        +-----------------------+
-                    |
-                    v
-             ARM64 Assembly
-                    |
-                    v
-         Apple Clang Assembler
-                  / Linker
-                    |
-                    v
-          Native Mach-O Binary
+               C Source Code
+                     |
+                     v
+              +-------------+
+              |    Lexer    |
+              +-------------+
+                     |
+                     v
+                   Tokens
+                     |
+                     v
+        +-------------------------+
+        | Recursive-Descent Parser|
+        |                         |
+        |  - Expression Parsing   |
+        |  - Statement Parsing    |
+        |  - Symbol Tables        |
+        |  - Lexical Scopes       |
+        +-------------------------+
+                     |
+                     v
+          Abstract Syntax Tree
+                     |
+                     v
+        +-------------------------+
+        | AArch64 Code Generator  |
+        |                         |
+        |  - Expression Codegen   |
+        |  - Stack Frame Layout   |
+        |  - Variable Access      |
+        |  - Conditional Branches |
+        |  - Loop Control Flow    |
+        +-------------------------+
+                     |
+                     v
+               ARM64 Assembly
+                     |
+                     v
+             Apple Clang Driver
+             Assembler + Linker
+                     |
+                     v
+          Native Mach-O Executable
 ```
 
 ### 1. Lexical Analysis
 
-The lexer transforms a stream of source characters into tokens.
+The lexer transforms source text into a sequence of tokens.
 
-Example input:
+Example:
 
 ```c
-return 2 + 3 * 4;
+int x = 5;
+x += 3;
 ```
 
 Token stream:
 
 ```text
-KwReturn        return
-IntegerLiteral  2
-Plus            +
+KwInt           int
+Identifier      x
+Equal           =
+IntegerLiteral  5
+Semicolon       ;
+Identifier      x
+PlusEqual       +=
 IntegerLiteral  3
-Star            *
-IntegerLiteral  4
 Semicolon       ;
 ```
 
-Each token contains:
+Each token stores:
 
 - Token kind
 - Source lexeme
 - Source location
 - Optional integer value
 
-Source locations are retained for compiler diagnostics.
+Source locations allow the compiler to report filename, line, and column information for errors.
 
 ### 2. Recursive-Descent Parsing
 
-MicroCC uses a handwritten recursive-descent parser rather than external parser generators.
+MicroCC uses a handwritten recursive-descent parser.
 
-Each major operator precedence level is represented by its own parsing function.
+Each major expression precedence level is implemented by a dedicated parsing function.
 
 Current precedence hierarchy, from lowest to highest:
 
 ```text
 Comma               ,
+Assignment          = += -= *= /= %= ...
 Conditional         ?:
 Logical OR          ||
 Logical AND         &&
@@ -431,142 +568,233 @@ Relational          < <= > >=
 Bit Shifts          << >>
 Additive            + -
 Multiplicative      * / %
-Unary               + - ! ~
-Primary             literals, ()
+Unary               + - ! ~ ++ --
+Postfix             ++ --
+Primary             literals, variables, ()
 ```
 
-This ensures that:
+Assignment and conditional expressions are right-associative.
 
-```c
-2 + 3 * 4
-```
+Most arithmetic and bitwise operators are left-associative.
 
-is parsed as:
-
-```text
-2 + (3 * 4)
-```
-
-rather than:
-
-```text
-(2 + 3) * 4
-```
-
-Operators at the same precedence level are generally left-associative. Conditional expressions are right-associative.
+The parser builds an AST rather than evaluating expressions directly.
 
 ### 3. Abstract Syntax Tree
 
-The parser produces an AST representing program structure.
+The AST represents the logical structure of the source program.
 
-Currently implemented expression nodes:
+Current expression nodes:
 
 ```text
 Expr
 ├── IntegerLiteral
+├── VariableExpr
 ├── UnaryExpr
 ├── BinaryExpr
-└── ConditionalExpr
+├── ConditionalExpr
+├── AssignExpr
+└── UpdateExpr
 ```
 
-Statement and declaration nodes:
+Current statement nodes:
+
+```text
+Stmt
+├── ReturnStmt
+├── EmptyStmt
+├── ExprStmt
+├── DeclStmt
+├── BlockStmt
+├── IfStmt
+├── WhileStmt
+├── DoWhileStmt
+├── ForStmt
+├── BreakStmt
+└── ContinueStmt
+```
+
+Program structure:
 
 ```text
 Program
 └── FunctionDecl
-    └── ReturnStmt
-        └── Expr
+    ├── Function Name
+    ├── Local Stack Size
+    └── Statements
 ```
 
-Example:
+AST nodes use `std::unique_ptr` to manage ownership.
+
+### 4. Symbol Tables and Lexical Scoping
+
+Phase 3 introduces compile-time symbol resolution.
+
+The parser maintains a stack of symbol tables:
+
+```cpp
+std::vector<
+    std::unordered_map<std::string, std::size_t>
+> scopes_;
+```
+
+Each symbol table maps a variable identifier to its assigned local stack offset.
+
+When entering a new block:
 
 ```c
-int main() {
-    return 2 + 3 * 4;
+{
+    int x = 5;
 }
 ```
 
-AST representation:
+the parser creates a new lexical scope.
 
-```text
-Program
-└── FunctionDecl: main
-    └── ReturnStmt
-        └── BinaryExpr: Add
-            ├── IntegerLiteral: 2
-            └── BinaryExpr: Multiply
-                ├── IntegerLiteral: 3
-                └── IntegerLiteral: 4
-```
+When leaving the block, that scope is removed.
 
-AST nodes use C++ ownership semantics through `std::unique_ptr`.
-
-### 4. AArch64 Code Generation
-
-MicroCC currently generates ARM64 assembly targeting macOS.
-
-Expression results are stored in the `w0` register.
-
-Binary expressions use a simple stack-based evaluation strategy:
-
-1. Evaluate the left operand into `w0`.
-2. Save the result in a 16-byte stack slot.
-3. Evaluate the right operand into `w0`.
-4. Restore the left operand into `w9`.
-5. Perform the operation and place the result in `w0`.
+Variable lookup searches from the innermost scope outward, allowing nested blocks to access outer variables while supporting shadowing.
 
 For example:
 
 ```c
-int main() {
-    return 2 + 3;
+int x = 10;
+
+{
+    int y = x + 5;
 }
 ```
 
-Generated assembly resembles:
+The parser resolves `x` to its outer declaration.
+
+Undeclared identifiers and same-scope redeclarations produce compiler errors.
+
+This is MicroCC's first implementation of basic semantic analysis, currently integrated directly into the parser.
+
+### 5. Local Variables and Stack Frames
+
+Each local `int` receives a unique stack offset.
+
+For simplicity, MicroCC currently allocates an eight-byte stack slot for every 32-bit local integer.
+
+Stack space is reserved once when entering a function.
+
+The total local stack allocation is rounded up to a multiple of 16 bytes to maintain stack alignment.
+
+The backend uses:
+
+| Register | Purpose |
+|----------|---------|
+| `x29` | Frame pointer |
+| `x30` | Link register |
+| `sp` | Stack pointer |
+| `w0` | Expression results and return values |
+| `w9` | Arithmetic operand |
+| `w10` | Scratch register |
+| `w11` | Temporary value preservation |
+
+A function prologue resembles:
 
 ```asm
-.text
-
-.globl _main
-.p2align 2
-_main:
-    movz w0, #2
-
-    sub sp, sp, #16
-    str w0, [sp]
-
-    movz w0, #3
-
-    ldr w9, [sp]
-    add sp, sp, #16
-
-    add w0, w9, w0
-    ret
+stp x29, x30, [sp, #-16]!
+mov x29, sp
+sub sp, sp, #16
 ```
 
-AArch64 instructions currently used include:
+Local variable access uses negative offsets from `x29`.
 
-| Instruction | Purpose |
+Example:
+
+```asm
+movz x10, #8
+sub x10, x29, x10
+ldr w0, [x10]
+```
+
+This loads a local variable located eight bytes below the frame pointer.
+
+Corresponding store:
+
+```asm
+movz x10, #8
+sub x10, x29, x10
+str w0, [x10]
+```
+
+All returns branch to a shared function epilogue:
+
+```asm
+mov sp, x29
+ldp x29, x30, [sp], #16
+ret
+```
+
+This ensures that the stack frame is restored when returning from nested loops or conditionals.
+
+### 6. Control-Flow Code Generation
+
+MicroCC generates branch labels for conditional statements and loops.
+
+For an `if/else` statement:
+
+```text
+Evaluate Condition
+       |
+       v
+   Condition?
+    /      \
+  True     False
+   |         |
+Then Block  Else Block
+   |         |
+   +----+----+
+        |
+        v
+   Continue
+```
+
+Loops use dedicated labels for:
+
+- Condition evaluation
+- Loop body
+- Increment or update expression
+- Loop exit
+
+Nested loops use a stack of loop contexts:
+
+```cpp
+struct LoopLabels {
+    std::string breakLabel;
+    std::string continueLabel;
+};
+```
+
+This ensures `break` and `continue` affect the innermost enclosing loop.
+
+For `for` loops, `continue` jumps to the increment expression before returning to the condition.
+
+For `while` and `do-while` loops, `continue` jumps to the appropriate condition check.
+
+### 7. AArch64 Instruction Selection
+
+MicroCC currently uses the following instruction categories:
+
+| Instructions | Purpose |
 |-------------|---------|
-| `movz`, `movk` | Integer constant loading |
-| `add`, `sub` | Arithmetic |
+| `mov`, `movz`, `movk` | Register moves and integer constants |
+| `add`, `sub`, `neg` | Arithmetic |
 | `mul` | Multiplication |
-| `sdiv` | Signed division |
-| `msub` | Remainder calculation |
-| `neg` | Unary negation |
-| `and`, `orr`, `eor` | Bitwise operations |
-| `mvn` | Bitwise complement |
+| `sdiv`, `msub` | Division and remainder |
+| `and`, `orr`, `eor`, `mvn` | Bitwise operations |
 | `lsl`, `asr` | Bit shifts |
 | `cmp`, `cset` | Comparisons |
 | `cbz`, `cbnz` | Conditional branches |
-| `b` | Unconditional branch |
-| `str`, `ldr` | Stack storage and retrieval |
+| `b` | Unconditional branching |
+| `ldr`, `str` | Memory loads and stores |
+| `stp`, `ldp` | Paired register storage |
 | `ret` | Function return |
 
-Logical operators and conditional expressions use branch labels to implement short-circuit evaluation.
+The current backend favors simple, readable code generation over optimization.
 
-The backend currently prioritizes correctness and simplicity over performance. Optimization and register allocation are planned for later phases.
+Register allocation and more sophisticated instruction selection are planned for later phases.
 
 ---
 
@@ -585,122 +813,145 @@ Available options:
 | `--dump-tokens` | Display lexer output |
 | `-h`, `--help` | Display usage information |
 
-### Generate an Executable
+### Compile an Executable
 
 ```bash
-./build/microcc examples/phase2b.c -o phase2b
+./build/microcc examples/sum_even.c -o sum_even
 ```
 
 Run:
 
 ```bash
-./phase2b
+./sum_even
 echo $?
 ```
 
-Expected return value:
+Expected:
 
 ```text
-24
+20
 ```
 
-### Emit Assembly
+### Generate Assembly
 
 ```bash
-./build/microcc -S examples/phase2b.c -o phase2b.s
+./build/microcc -S examples/sum_even.c -o sum_even.s
 ```
 
-Inspect the generated output:
+Inspect the generated assembly:
 
 ```bash
-cat phase2b.s
+cat sum_even.s
 ```
 
 ### Inspect Tokens
 
 ```bash
-./build/microcc --dump-tokens examples/phase2b.c -o phase2b
+./build/microcc --dump-tokens examples/sum_even.c -o sum_even
 ```
 
-### Inspect Native Instructions
-
-After compiling a program:
+### Inspect Native Machine Instructions
 
 ```bash
-otool -tvV phase2b
+otool -tvV sum_even
 ```
 
-This displays the disassembled ARM64 machine code from the generated Mach-O executable.
+This disassembles the generated Mach-O executable, allowing inspection of the native ARM64 machine instructions.
 
 ---
 
 ## Testing
 
-MicroCC uses CTest for end-to-end integration tests.
+MicroCC uses CTest for automated compiler integration testing.
 
-The tests exercise the entire compilation pipeline:
+Each positive integration test performs the following:
 
 ```text
-C Source
-   |
-   v
-MicroCC
-   |
-   v
-ARM64 Assembly
-   |
-   v
-Assembler / Linker
-   |
-   v
-Executable
-   |
-   v
-Execution and Exit Status Verification
+C Test Program
+       |
+       v
+MicroCC Compilation
+       |
+       v
+Generated ARM64 Assembly
+       |
+       v
+Assembly and Linking
+       |
+       v
+Native Executable
+       |
+       v
+Program Execution
+       |
+       v
+Expected Exit Code Comparison
 ```
 
-Run the complete test suite:
+Negative tests verify that invalid source programs produce the expected diagnostics.
+
+### Run Tests
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-### Current Test Coverage
+List registered tests:
 
-The Phase 2B CMake configuration registers **26 integration tests**.
+```bash
+ctest --test-dir build -N
+```
+
+### Test Coverage
+
+The Phase 3 CMake configuration registers **55 integration tests**, including all retained Phase 1, 2A, and 2B tests.
 
 | Phase | Tests | Coverage |
-|-------|-------|----------|
-| Phase 1 | 1 | Minimal compilation and return values |
-| Phase 2A | 6 | Arithmetic, precedence, parentheses, unary operators |
-| Phase 2B | 16 | Expanded operators, logical expressions, shifts, conditional expressions |
-| Phase 2B Diagnostics | 3 | Expected syntax and unsupported-feature errors |
-| **Total** | **26** | |
+|-------|------:|----------|
+| Phase 1 | 1 | Compiler foundation and basic returns |
+| Phase 2A | 6 | Arithmetic expression parsing |
+| Phase 2B | 18 | Expanded expressions and diagnostics |
+| Phase 3 | 30 | Variables, assignments, scopes, control flow, diagnostics |
+| **Total** | **55** | |
 
-Tests include:
+### Phase 3 Positive Tests
 
-- Arithmetic precedence
-- Parenthesized expressions
-- Left associativity
-- Unary expressions
-- Signed division and remainder
-- Relational comparisons
-- Equality comparisons
-- Bitwise operations
-- Operator precedence across categories
-- Left and right shifts
-- Logical operations
-- Short-circuit evaluation
-- Conditional expressions
-- Nested conditional expressions
-- Comma expressions
-- Combined expressions
-- Missing punctuation diagnostics
-- Unsupported assignment diagnostics
+23 positive tests cover:
 
-Positive integration tests compare the compiled program's exit status against the expected result.
+- Local variables and initialization
+- Assignment chaining
+- Compound assignments
+- Prefix and postfix operators
+- Variable shadowing
+- Conditional statements
+- Dangling-else association
+- While loops
+- Do-while loops
+- For loops
+- Continue and break behavior
+- Nested loops
+- Infinite loops with explicit exits
+- Assignment expressions
+- Multiple declarators
+- Logical short-circuiting with side effects
+- Conditional expressions containing assignments
+- Comma expressions in loops
+- Early returns
+- Nested assignments
 
-Negative tests verify that invalid source programs are rejected with appropriate diagnostic messages.
+### Phase 3 Negative Tests
+
+Seven negative tests verify:
+
+- Undeclared variables
+- Same-scope redeclaration
+- Accessing a variable outside its `for` scope
+- `break` outside a loop
+- `continue` outside a loop
+- Invalid assignment targets
+- Invalid increment/decrement targets
+
+The full test suite should be run on Apple Silicon macOS to validate native execution of generated programs.
 
 ---
 
@@ -731,7 +982,8 @@ MicroCC/
 ├── examples/
 │   ├── return_7.c
 │   ├── math.c
-│   └── phase2b.c
+│   ├── phase2b.c
+│   └── sum_even.c
 │
 └── tests/
     ├── cmake/
@@ -739,39 +991,17 @@ MicroCC/
     │   └── run_failure_test.cmake
     │
     └── integration/
-        ├── return_42.c
-        ├── precedence.c
-        ├── parentheses.c
-        ├── associativity.c
-        ├── unary.c
-        ├── division.c
-        ├── nesting.c
-        ├── modulo.c
-        ├── comparisons.c
-        ├── equality.c
-        ├── bitwise.c
-        ├── bitwise_precedence.c
-        ├── shifts.c
-        ├── shift_precedence.c
-        ├── logical.c
-        ├── short_circuit.c
-        ├── ternary.c
-        ├── ternary_nested.c
-        ├── ternary_middle_comma.c
-        ├── comma.c
-        ├── bitwise_not.c
-        ├── unary_chain.c
-        ├── comprehensive.c
-        ├── missing_colon.c
-        ├── missing_parenthesis.c
-        └── assignment_not_supported.c
+        ├── Phase 1 tests
+        ├── Phase 2A tests
+        ├── Phase 2B tests
+        └── Phase 3 tests
 ```
 
 ---
 
 ## Development Roadmap
 
-MicroCC is being developed in incremental phases, each introducing a new part of the C language or compiler infrastructure.
+MicroCC is developed incrementally, with each phase expanding the supported language features and compiler infrastructure.
 
 ### Phase 1 — Compiler Foundation
 
@@ -794,33 +1024,32 @@ MicroCC is being developed in incremental phases, each introducing a new part of
 
 **Status: Complete**
 
-- [x] Binary addition and subtraction
+- [x] Addition and subtraction
 - [x] Multiplication and division
 - [x] Unary positive and negative operators
 - [x] Parenthesized expressions
 - [x] Operator precedence
 - [x] Left associativity
+- [x] Recursive expression parsing
 - [x] Binary and unary AST nodes
-- [x] Recursive arithmetic code generation
-- [x] Stack-based operand preservation
+- [x] Stack-based arithmetic code generation
 - [x] Arithmetic integration tests
 
 ### Phase 2B — Expanded Expressions
 
-**Status: Implementation Complete**
+**Status: Complete**
 
 - [x] Remainder operator
 - [x] Relational operators
 - [x] Equality operators
 - [x] Logical AND and OR
 - [x] Logical NOT
-- [x] Bitwise AND, OR, and XOR
-- [x] Bitwise complement
+- [x] Bitwise AND, OR, XOR, and complement
 - [x] Left and right shifts
 - [x] Conditional operator
 - [x] Nested conditional expressions
 - [x] Comma operator
-- [x] Complete supported-operator precedence hierarchy
+- [x] Expanded precedence hierarchy
 - [x] Short-circuit evaluation
 - [x] Conditional ARM64 branches
 - [x] Expanded integration tests
@@ -828,55 +1057,68 @@ MicroCC is being developed in incremental phases, each introducing a new part of
 
 ### Phase 3 — Variables and Control Flow
 
+**Status: Implemented — Native Test Verification Pending**
+
+- [x] Local variable declarations
+- [x] Variable initialization
+- [x] Multiple declarators
+- [x] Assignment expressions
+- [x] Compound assignments
+- [x] Prefix and postfix increment/decrement
+- [x] Symbol tables
+- [x] Lexical scopes
+- [x] Variable shadowing
+- [x] Stack slot allocation
+- [x] Frame pointer-based local variable access
+- [x] Basic lvalue validation
+- [x] Expression statements
+- [x] Block statements
+- [x] Empty statements
+- [x] `if` / `else`
+- [x] `while`
+- [x] `do-while`
+- [x] `for`
+- [x] `break` / `continue`
+- [x] Nested loop handling
+- [x] Shared function epilogue
+- [x] Control-flow code generation
+- [x] Expanded positive integration tests
+- [x] Expanded negative diagnostic tests
+
+### Phase 4 — Functions and Calling Conventions
+
 **Status: Planned**
 
-- [ ] Local variable declarations
-- [ ] Variable initialization
-- [ ] Assignments
-- [ ] Compound assignments
-- [ ] Prefix and postfix increment/decrement
-- [ ] Symbol tables
-- [ ] Lexical scopes
-- [ ] Local stack storage
-- [ ] Lvalue and rvalue handling
-- [ ] Expression statements
-- [ ] Block statements
-- [ ] `if` / `else`
-- [ ] `while`
-- [ ] `do` / `while`
-- [ ] `for`
-- [ ] `break` / `continue`
-- [ ] Control-flow code generation
+- [ ] Function declarations and definitions with parameters
+- [ ] Function call expressions
+- [ ] Argument evaluation and passing
+- [ ] AArch64 calling convention implementation
+- [ ] Register-based argument passing
+- [ ] Stack-based argument passing
+- [ ] Return value handling
+- [ ] Recursive function calls
+- [ ] Forward declarations
+- [ ] External function declarations
+- [ ] Function symbol resolution
+- [ ] Multi-function programs
+- [ ] Calling convention integration tests
 
 Target program:
 
 ```c
+int factorial(int n) {
+    if (n <= 1)
+        return 1;
+
+    return n * factorial(n - 1);
+}
+
 int main() {
-    int sum = 0;
-
-    for (int i = 0; i < 10; i = i + 1) {
-        if (i % 2 == 0) {
-            sum = sum + i;
-        }
-    }
-
-    return sum;
+    return factorial(5);
 }
 ```
 
-Expected return value: `20`.
-
-### Phase 4 — Functions and Calling Conventions
-
-- [ ] Function parameters
-- [ ] Function calls
-- [ ] Argument evaluation
-- [ ] Local function scopes
-- [ ] Stack frames
-- [ ] AArch64 calling conventions
-- [ ] Recursive functions
-- [ ] Return value handling
-- [ ] External function declarations
+Expected return value: `120`.
 
 ### Phase 5 — C Type System
 
@@ -890,6 +1132,7 @@ Expected return value: `20`.
 - [ ] Implicit conversions
 - [ ] Explicit casts
 - [ ] Function types
+- [ ] Improved semantic diagnostics
 
 ### Phase 6 — Pointers and Arrays
 
@@ -899,9 +1142,10 @@ Expected return value: `20`.
 - [ ] Pointer arithmetic
 - [ ] Array types
 - [ ] Array indexing
-- [ ] Array-to-pointer conversion
+- [ ] Array-to-pointer decay
 - [ ] `sizeof`
 - [ ] Memory loads and stores
+- [ ] Pointer-related type checking
 
 ### Phase 7 — Aggregate Types
 
@@ -924,7 +1168,7 @@ Expected return value: `20`.
 - [ ] Read-only data sections
 - [ ] Uninitialized storage
 - [ ] External symbols
-- [ ] C standard library interoperability
+- [ ] Standard C library interoperability
 - [ ] Multi-file linking
 
 ### Phase 9 — Preprocessor
@@ -951,6 +1195,7 @@ Expected return value: `20`.
 - [ ] Dead code elimination
 - [ ] Copy propagation
 - [ ] Common subexpression elimination
+- [ ] Dominator analysis
 - [ ] Liveness analysis
 - [ ] Register allocation
 - [ ] Optimization levels
@@ -958,76 +1203,99 @@ Expected return value: `20`.
 
 ### Long-Term Goals
 
-- Compile increasingly complex C programs
 - Support a practical subset of C11
-- Improve diagnostic messages and source reporting
-- Add differential testing against Clang and GCC
-- Introduce compiler fuzzing
+- Compile increasingly complex C programs
 - Compile small existing open-source C libraries
-- Expand to larger real-world C programs
+- Improve diagnostic messages
+- Separate semantic analysis from parsing
+- Introduce differential testing against Clang and GCC
+- Add compiler fuzzing
+- Develop a platform-independent IR
+- Implement optimization passes
+- Improve generated machine-code quality
 - Support multiple target architectures
-- Improve code generation quality and performance
+- Progress toward compiling useful real-world C projects
 
 ---
 
 ## Current Limitations
 
-MicroCC is still in its early stages.
+MicroCC remains an educational C subset compiler.
 
-The current implementation:
+Current limitations include:
 
-- Operates primarily on signed 32-bit integer expressions.
-- Accepts decimal integer literals up to `2147483647`.
-- Does not yet support the `-2147483648` literal expression.
-- Does not perform full C type checking.
-- Does not implement local variables or assignments.
-- Does not support function calls or parameters.
-- Does not implement the preprocessor.
-- Does not support floating-point arithmetic.
-- Does not optimize generated assembly.
-- Targets Apple Silicon macOS only.
+- Local variables are restricted to signed 32-bit `int`.
+- Each local currently uses an eight-byte stack slot.
+- Stack slots are not reused between non-overlapping scopes.
+- Decimal integer literals must fit the positive signed 32-bit range.
+- Full C type checking and integer conversions are not implemented.
+- Assignment and increment/decrement currently target local variables only.
+- Function calls and function parameters are not supported.
+- Pointer types and arrays are not supported.
+- Global variables and static storage are not supported.
+- String literals and character literals are not supported.
+- The preprocessor is not implemented.
+- Floating-point arithmetic is not implemented.
+- Generated assembly is not optimized.
+- Only the AArch64 macOS target is supported.
 
-As in C, signed integer overflow and division by zero are undefined behavior. The current implementation does not diagnose these cases.
+Uninitialized local variables must not be read before receiving a value.
 
-Shift counts outside the valid 32-bit range and invalid signed left shifts are also not supported as defined operations. Signed right shifts are currently implemented using AArch64 arithmetic right shifts.
+Signed integer overflow, division by zero, and invalid signed shift operations remain undefined behavior. The compiler does not yet provide complete semantic diagnostics for these cases.
 
-Some C constructs are intentionally excluded until the corresponding language and type-system phases are implemented.
+The backend is intentionally simple and uses stack storage for local variables and temporary expression results.
+
+These limitations will be addressed incrementally as the compiler's type system, semantic analysis, and backend evolve.
 
 ---
 
 ## Project Goals
 
-MicroCC is a hands-on compiler construction project focused on understanding the complete compilation pipeline.
+MicroCC is designed as a hands-on compiler engineering project exploring the complete compilation pipeline.
 
-Key areas of study include:
+### Compiler Frontend
 
-**Language Implementation**
 - Lexical analysis
+- Recursive-descent parsing
 - Formal grammars
-- Parsing algorithms
-- Abstract syntax trees
+- AST design
 - Operator precedence
+- Symbol tables
+- Lexical scoping
 - Semantic analysis
 - Type systems
 
-**Systems Programming**
+### Systems Programming
+
+- Modern C++20
 - AArch64 assembly
 - Calling conventions
-- Stack management
-- Machine-level arithmetic
+- Stack frame management
+- Register usage
+- Memory access
 - Object files and linking
 - Native executable formats
 
-**Compiler Engineering**
-- Intermediate representations
-- Control-flow analysis
-- Optimization algorithms
-- Register allocation
-- Backend design
-- Cross-platform code generation
-- Compiler correctness testing
+### Compiler Backend
 
-The emphasis is on implementing compiler components directly rather than relying on LLVM or external parser generators.
+- Instruction selection
+- Control-flow code generation
+- Intermediate representations
+- Control-flow graphs
+- Optimization passes
+- Register allocation
+- Backend portability
+
+### Compiler Correctness
+
+- Unit and integration testing
+- Positive and negative compilation tests
+- Assembly inspection
+- Differential testing
+- Compiler fuzzing
+- Regression testing
+
+The emphasis is on implementing compiler components directly, understanding their behavior, and gradually improving correctness and language coverage.
 
 The eventual objective is a compact, understandable compiler capable of compiling useful real-world C programs.
 

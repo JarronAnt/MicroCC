@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace microcc {
@@ -23,24 +24,13 @@ public:
     Program parseProgram();
 
 private:
-    // ========================================================
     // Token helpers
-    // ========================================================
-
-    [[nodiscard]]
-    const Token& current() const;
-
-    [[nodiscard]]
-    const Token& previous() const;
-
-    [[nodiscard]]
-    bool isAtEnd() const;
-
-    [[nodiscard]]
-    bool check(TokenKind kind) const;
+    [[nodiscard]] const Token& current() const;
+    [[nodiscard]] const Token& previous() const;
+    [[nodiscard]] bool isAtEnd() const;
+    [[nodiscard]] bool check(TokenKind kind) const;
 
     bool match(TokenKind kind);
-
     const Token& advance();
 
     const Token& consume(
@@ -48,10 +38,16 @@ private:
         std::string_view message
     );
 
-    // ========================================================
-    // Declarations and statements
-    // ========================================================
+    // Symbol tables and scopes
+    void beginScope();
+    void endScope();
 
+    std::size_t declareLocal(const Token& name);
+
+    [[nodiscard]]
+    std::size_t lookupLocal(const Token& name) const;
+
+    // Functions and statements
     [[nodiscard]]
     std::unique_ptr<FunctionDecl> parseFunction();
 
@@ -59,19 +55,35 @@ private:
     std::unique_ptr<Stmt> parseStatement();
 
     [[nodiscard]]
+    std::unique_ptr<Stmt> parseBlock();
+
+    [[nodiscard]]
+    std::unique_ptr<Stmt> parseDeclaration();
+
+    [[nodiscard]]
     std::unique_ptr<Stmt> parseReturnStatement();
 
-    // ========================================================
-    // Expression parsing
-    //
-    // Listed from lowest to highest precedence.
-    // ========================================================
+    [[nodiscard]]
+    std::unique_ptr<Stmt> parseIfStatement();
 
+    [[nodiscard]]
+    std::unique_ptr<Stmt> parseWhileStatement();
+
+    [[nodiscard]]
+    std::unique_ptr<Stmt> parseDoWhileStatement();
+
+    [[nodiscard]]
+    std::unique_ptr<Stmt> parseForStatement();
+
+    // Expression parsing
     [[nodiscard]]
     std::unique_ptr<Expr> parseExpression();
 
     [[nodiscard]]
     std::unique_ptr<Expr> parseComma();
+
+    [[nodiscard]]
+    std::unique_ptr<Expr> parseAssignment();
 
     [[nodiscard]]
     std::unique_ptr<Expr> parseConditional();
@@ -110,12 +122,12 @@ private:
     std::unique_ptr<Expr> parseUnary();
 
     [[nodiscard]]
+    std::unique_ptr<Expr> parsePostfix();
+
+    [[nodiscard]]
     std::unique_ptr<Expr> parsePrimary();
 
-    // ========================================================
     // Diagnostics
-    // ========================================================
-
     [[noreturn]]
     void error(
         const Token& token,
@@ -127,6 +139,13 @@ private:
     std::string filename_;
 
     std::size_t currentIndex_ = 0;
+
+    std::vector<
+        std::unordered_map<std::string, std::size_t>
+    > scopes_;
+
+    std::size_t nextLocalOffset_ = 0;
+    unsigned loopDepth_ = 0;
 };
 
 } // namespace microcc
